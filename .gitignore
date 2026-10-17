@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+# Checkpoints, caches, large artefacts
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.parquet
+*.npy
+*.npz
+results/**
+!results/.gitkeep
+checkpoints/
+adapters/
+hf_cache/
+data/
+
+# Weights & Biases
+wandb/
+*.wandb
+
+# Environment / secrets
+.env
+*.key
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

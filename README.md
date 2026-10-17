@@ -1,10 +1,18 @@
 # Suppressed or erased? Auditing diffusion and LLM unlearning with influence estimation and membership inference
 
-**Status:** Pre-registration · Week 0 of 5 · Pre-registered 2026-10-13 · Models: DDPM on CIFAR-10 (32×32), Qwen2.5-0.5B + LoRA rank 16 · Seeds: 0, 1, 2
+**Status:** Pre-registration v0.2 · Week 0 of 10 · Pre-registered 2026-10-13, amended 2026-10-18 before any run · Models: small class-conditional DDPM on CIFAR-10 (32×32, primary track), Qwen2.5-0.5B on a TOFU-style set via OpenUnlearning (corroborating track) · Seeds: 0, 1, 2
 
-**Problem in one sentence.** We determine whether published approximate-unlearning methods erase the influence of forgotten data or merely suppress it, and identify the property of the parameter update that explains the difference.
+| Document | What it is |
+|---|---|
+| [`PREREGISTRATION.md`](PREREGISTRATION.md) | Frozen hypotheses, numeric pass/fail tests, models, seeds. Changes only via the dated Amendments appendix. |
+| [`REVIEW.md`](REVIEW.md) | Independent review of 2026-10-18: citation corrections, novelty against the literature, design flaws, what changed and why. Read this before the pre-registration. |
+| [`ROADMAP.md`](ROADMAP.md) | Milestones as GitHub task lists. Tick them off; this is the progress tracker. |
+| [`EXPERIMENT_LOG.md`](EXPERIMENT_LOG.md) | Append-only log, one entry per run, expectation written before launch. |
+| [`READING.md`](READING.md) | Ordered reading list with the reason for each item. |
 
-**Why this matters.** Unlearning papers typically certify success with a single number: membership-inference AUC on the forget set drops to chance, or the forgotten class is no longer generated. Neither says whether the model's internal representation of that data is gone. If an attacker can relearn the forgotten class in a handful of steps, or a linear probe still reads it off frozen features, then "unlearning" was a surface edit, and privacy or copyright claims built on it do not hold. An audit that measures the gap to the retrain-from-scratch oracle along several independent axes, and explains the gap mechanically, is a prerequisite for trusting any of these methods in deployment.
+**Problem in one sentence.** We determine whether published approximate-unlearning methods erase the influence of forgotten data or merely suppress it, measured by whether the *influence* of forget examples on the model's other outputs survives, and we test whether a property of the parameter update (its effective rank, at matched norm) explains how fast the forgotten data come back.
+
+**Why this matters.** Unlearning papers typically certify success with a single number: membership-inference AUC on the forget set drops to chance, or the forgotten class is no longer generated. The LLM literature has already shown that this certificate is weak (relearning, probing and tampering attacks all recover "forgotten" knowledge; see [`REVIEW.md`](REVIEW.md) §3), and the classifier literature has shown the same with linear probes. What nobody has measured is whether the *influence* of the forgotten examples on retained outputs, in the Koh–Liang / TRAK sense, actually vanishes, nor whether any mechanical property of the update predicts relearning speed, nor whether any of this holds for class-unlearned diffusion models rather than text-to-image concept erasure. An audit that measures the gap to the retrain-from-scratch oracle along these axes, and explains the gap mechanically, is a prerequisite for trusting any of these methods in deployment.
 
 ---
 
@@ -12,36 +20,39 @@
 
 ### The gap
 
-IISc has unusually dense coverage of both sides of this problem, methods and measurement tools, without an audit that joins them.
+IISc has dense coverage of both sides of this problem, methods and measurement tools, without an audit that joins them.
 
-On the **methods side**, Prathosh A.P.'s group has published a sequence of unlearning papers across model families: *"Adapt then Unlearn"* for GANs (TMLR 2025), *"Partially Blinded Unlearning: Class Unlearning from Bayesian Perspective"* (AAAI 2025), *"Concept Forgetting via Label Annealing"* (UAI 2025, with Ananda Theertha Suresh) and *"Unlearning in Diffusion Models under Data Constraints: A Variational Inference Approach"* (TMLR 2026) ([prathosh.in/publications](https://prathosh.in/publications.html)). VAL's *"Concept Siever: Controllable Erasure of Concepts from Diffusion Models"* (TMLR 2025) and Soma Biswas's *"GenErase: Generalizable and Semantically-Aware Concept Erasure in Diffusion Models"* (CVPR 2026) are the vision-side erasure methods; both labs also debias text-to-image models (*Balancing Act*, CVPR 2024; unsupervised self-debiasing, WACV 2026) ([VAL publications](https://val.cds.iisc.ac.in/publications.html); [Biswas publications](https://sites.google.com/iisc.ac.in/somabiswas/publications)).
+On the **methods side**, Prathosh A.P.'s group has published *"Partially Blinded Unlearning: Class Unlearning for Deep Networks from Bayesian Perspective"* ([AAAI 2025](https://ojs.aaai.org/index.php/AAAI/article/view/32682)), *"Concept Forgetting via Label Annealing"* ([UAI 2025](https://proceedings.mlr.press/v286/panda25a.html)) and *"Unlearning in Diffusion Models under Data Constraints: A Variational Inference Approach"* ([TMLR 2026](https://mlanthology.org/tmlr/2026/panda2026tmlr-unlearning/), [arXiv 2510.04058](https://arxiv.org/abs/2510.04058)). The last of these is the closest paper to our diffusion track and its "data constraints" setting (no retain data) is one of our ablations. Chiranjib Bhattacharyya's DisCEdit ([NeurIPS 2024](https://neurips.cc/virtual/2024/poster/93306)) and ModHiFi ([arXiv 2511.19566](https://arxiv.org/pdf/2511.19566), NeurIPS 2025) combine pruning with class forgetting on CIFAR and ask which components carry predictive fidelity, which is the component-level view our per-layer analysis mirrors. VAL's Concept Siever ([TMLR 2025](https://mlanthology.org/tmlr/2025/singh2025tmlr-concept)) and Soma Biswas's GenErase ([CVPR 2026](https://cvpr.thecvf.com/virtual/2026/poster/38944), training-free, text-to-image only) are the vision-side concept-erasure methods; they become relevant only if the stretch Stable Diffusion arm is run.
 
-On the **measurement side**, Prathosh's *"f-INE: A Hypothesis Testing Framework for Estimating Influence under Training Randomness"* (ICLR 2026) and *"Efficient Subset Selection Using Text-Guided Data Attribution"* (TMLR 2026) are exactly the attribution tools needed to check whether influence has vanished. Danish Pruthi's STAMP (ICML 2025, with Pratyush Maini) proves dataset membership via watermarked rephrasings, and his EMNLP 2026 Findings paper quantifies a privacy–hallucination trade-off in differentially private LMs, making membership inference native in his group ([Pruthi publications](https://danishpruthi.com/publications/)). Chiranjib Bhattacharyya's DisCEdit (NeurIPS 2024) and ModHiFi (NeurIPS 2025 Spotlight) identify which components carry predictive fidelity for model modification ([ML Lab publications](http://mllab.csa.iisc.ac.in/publications)), and Anirban Chakraborty's DynEval (ECCV 2026) evaluates text-to-image models holistically in the wild ([VCL publications](http://visual-computing.in/publications/)).
+On the **measurement side**, Prathosh's *"f-INE: A Hypothesis Testing Framework for Estimating Influence under Training Randomness"* ([ICLR 2026](https://www.iclr.cc/virtual/2026/poster/10009271)) is exactly the attribution tool needed to check whether influence has vanished, and its premise (two seeds differ by about as much as removing one example) is the null we would use for the stretch hypothesis test.
 
-What all of these leave open is the audit itself: when a published method reports that the forget set is "gone", does the influence of that data on the model's outputs actually vanish, or has it merely been suppressed in a way that a relearning attack or an influence estimator still detects? And if it is suppression, what about the parameter update makes it so?
+What all of these leave open is the audit itself: when a published method reports that the forget set is "gone", does the influence of that data on the model's outputs actually vanish, or has it merely been suppressed in a way that an influence estimator or a relearning attack still detects? And if it is suppression, what about the parameter update makes it so?
 
 ### The research question
 
-For class/concept unlearning in diffusion models and example-level unlearning in small LLMs, how far does each method move the model toward the retrain-from-scratch oracle, measured jointly by membership inference, influence/attribution estimates and relearning speed, and which mechanistic property of the unlearning update explains the gap?
+For class unlearning in a diffusion model (primary) and example-level unlearning in a small LLM (corroborating), how far does each method move the model toward the retrain-from-scratch oracle, measured jointly by membership inference, influence/attribution estimates and relearning speed; does the surviving influence of forget examples on retain outputs predict relearning speed; and does the effective rank of the parameter update, at matched update norm, explain the gap?
 
 ### Why this is an audit, not a new method
 
-The contribution is the protocol and the mechanism, not a competitor to any lab's method. That is what makes it credible to six labs at once: every method is evaluated by the same matched-compute rules against the same oracle, and the explanation (H3) is a property any method can be checked against.
+The contribution is the protocol, the influence axis and the mechanism, not a competitor to any lab's method. Every method is evaluated by the same matched-compute rules against the same oracle, and the explanation (H3) is a property any method can be checked against. The LLM track is built on [OpenUnlearning](https://arxiv.org/pdf/2506.12618) (NeurIPS 2025 D&B), which already packages TOFU, GA, GradDiff, NPO and MIA metrics; what this repository adds is the diffusion arm, the influence axis and a checkpoint-pair interface.
 
 ---
 
-## 2. Pre-registered hypotheses
+## 2. Pre-registered hypotheses (v0.2)
 
-Full text in [`HYPOTHESES.md`](HYPOTHESES.md); the tests are reproduced verbatim.
+Full text with dates and seeds is in [`PREREGISTRATION.md`](PREREGISTRATION.md); the 2026-10-18 amendments are in its appendix. The numerical tests are copied verbatim here. The order below is the order of the paper: H2 and H3 are the contribution, H1 is the replication that anchors them.
 
-**H1 — suppression, not erasure.** Gradient-ascent-style and label-annealing unlearning push forget-set MIA AUC to about 0.5 but leave intermediate representations of the forgotten class largely intact, so a linear probe on frozen features still recovers it and few-shot relearning is an order of magnitude faster than for the oracle.
+**H2 — influence survives (headline).** Gradient-based influence of forget examples on retain-set generations drops far less under approximate unlearning than under retraining.
+*Confirmed* if the mean attribution score of forget examples on retain generations drops by less than 50% under approximate unlearning versus more than 90% under retraining, with non-overlapping 95% CIs. *Refuted* if the approximate drop is within 10 percentage points of the retrain drop.
+*Pre-specified secondary analysis (added 2026-10-18):* Spearman correlation between surviving retain-set influence of forget examples and relearning steps-to-90% across method × seed cells. This ties H2 to H3.
+
+**H3 — low-rank mechanism, at matched norm (amended 2026-10-18).** The parameter delta from approximate unlearning is near-low-rank, dominated by a few directions that cancel forget-class scores, whereas retrain-minus-original is full-rank; low-rankness predicts relearning speed *after controlling for update norm*. Tested only on full-parameter tracks (the DDPM, and a full-fine-tune LLM arm), because under LoRA the rank is bounded by construction. The variational method is predicted to sit between the extremes.
+*Confirmed* if the top-5 singular values capture more than 70% of $\|\Delta\theta\|_F$ for approximate methods versus less than 30% for the oracle delta, and the partial Spearman correlation of effective rank with relearning steps, controlling for $\|\Delta\theta\|_F$, is $\ge 0.7$ across method × seed cells. *Refuted* if $|\rho_{\text{partial}}| < 0.3$ or the spectra are indistinguishable.
+
+**H1 — suppression, not erasure (cross-modality replication).** Gradient-ascent-style and label-annealing unlearning push forget-set MIA AUC to about 0.5 but leave intermediate representations of the forgotten class largely intact, so a linear probe on frozen features still recovers it and few-shot relearning is an order of magnitude faster than for the oracle. This is established for LLMs ([Hu et al., ICLR 2025](https://proceedings.iclr.cc/paper_files/paper/2025/hash/18fd48d9cbbf9a20e434c9d3db6973c5-Abstract-Conference.html); [Łucki et al., TMLR 2025](https://mlanthology.org/tmlr/2025/ucki2025tmlr-adversarial); [Unlearning Isn't Deletion](https://arxiv.org/html/2505.16831v1)) and for classifiers ([An Illusion of Unlearning?, AISTATS 2026](https://proceedings.mlr.press/v300/gao26e.html); [From Dormant to Deleted](https://arxiv.org/html/2505.22310)); we test it on a class-unlearned DDPM, with stronger MIA baselines (loss-based, LiRA-style and class-geometry MIA) so that "AUC about 0.5" is not a strawman.
 *Confirmed* if, for gradient-ascent and label-annealing methods, MIA AUC on the forget set is ≤ 0.55 while linear-probe accuracy on the forgotten class remains ≥ 80% of its pre-unlearning value and relearning steps-to-90% are ≤ 1/5 of the oracle's, in at least 2 of 3 seeds. *Refuted* if probe accuracy falls below 50% of original or relearning speed is within 2× of the oracle.
 
-**H2 — influence survives.** Gradient-based influence of forget examples on retain-set generations drops far less under approximate unlearning than under retraining, and f-INE-style tests under training randomness still flag many forget examples as influential.
-*Confirmed* if the mean attribution score of forget examples on retain generations drops by less than 50% under approximate unlearning versus more than 90% under retraining, with non-overlapping 95% CIs. *Refuted* if the approximate drop is within 10 percentage points of the retrain drop.
-
-**H3 — low-rank mechanism.** The parameter delta from approximate unlearning is near-low-rank, dominated by a few directions that cancel forget-class logits or scores, whereas retrain-minus-original is full-rank; low-rankness predicts relearning speed. The variational method is predicted to sit between the extremes.
-*Confirmed* if the top-5 singular values capture more than 70% of $\|\Delta\theta\|_F$ for approximate methods versus less than 30% for the oracle delta, and Spearman(effective rank, relearning steps) ≥ 0.7 across method × seed cells. *Refuted* if $|\rho| < 0.3$ or the spectra are indistinguishable.
+**Most interesting possible outcome.** If the approximate methods pass the influence test as well as MIA, "cheap unlearning is enough at this scale" is a positive and surprising result; the forget-set-size ablation would then say whether it is a capacity effect. If H3's correlation is absent at matched norm, the spectra still say whether low-rankness is the discriminating property or whether it is *which* layers carry the delta.
 
 ---
 
@@ -49,29 +60,33 @@ Full text in [`HYPOTHESES.md`](HYPOTHESES.md); the tests are reproduced verbatim
 
 | Role | Variable | Levels |
 |---|---|---|
-| Independent | Unlearning method | gradient ascent; gradient difference; label annealing (UAI 2025 style); variational/Bayesian (TMLR 2026 style); NPO-style preference unlearning (LLM track); retrain-from-scratch oracle |
+| Independent | Unlearning method | gradient ascent; gradient difference; label annealing (UAI 2025 style); variational/Bayesian (TMLR 2026 style); NPO (LLM track); retrain-from-scratch oracle |
 | Independent | Forget-set size | 1%, 5%, 10% of training data |
 | Independent | Retain-data availability | full, none |
-| Dependent | Membership-inference AUC | loss-based and LiRA-style; multi-timestep for diffusion; forget vs held-out |
+| Independent | Parameterisation (LLM track, for H3) | LoRA r16; full fine-tune with 8-bit Adam |
+| Dependent | Membership-inference AUC | loss-based, LiRA-style, and class-geometry MIA (CMIA); multi-timestep for diffusion; forget vs held-out |
 | Dependent | Influence/attribution | mean score of forget examples on retain-set outputs |
 | Dependent | Forgetting | forget-class generation rate (diffusion); forget-set ROUGE/accuracy (LLM) |
 | Dependent | Retain utility | FID on retain classes; benchmark accuracy (LLM) |
 | Dependent | Relearning | steps to 90% recovery when fine-tuned on 1–5% of the forget set |
 | Dependent | Linear-probe accuracy | frozen intermediate features |
+| Dependent | Update norm $\|\Delta\theta\|_F$ | per layer and total; the confound H3 controls for |
 | Dependent | Effective rank of per-layer $\Delta\theta$ | singular spectrum |
-| Controlled | Base checkpoints | one DDPM on CIFAR-10 at 32×32; Qwen2.5-0.5B + LoRA rank 16 on a TOFU-style fictitious-author set |
+| Controlled | Base checkpoints | one class-conditional DDPM on CIFAR-10 at 32×32, 5–10M parameters; Qwen2.5-0.5B on a TOFU-style set |
 | Controlled | Seeds | same 3 across methods |
 | Controlled | Compute | matched gradient steps per method |
 | Controlled | Evaluation | identical prompts / noise seeds; Hessian damping $\lambda$ fixed and reported |
 | Control (expected to fail) | "Do nothing" baseline | original checkpoint run through the full audit; must show no forgetting on any axis |
 
-**Tracks.** *Diffusion:* a small UNet DDPM on CIFAR-10 (a few T4-hours), one class unlearned with four methods, plus an optional Stable Diffusion 1.5 / SD-Turbo concept erasure on a benign object concept (16 GB with 8-bit optimisers). *LLM:* Qwen2.5-0.5B with LoRA on a TOFU-type fictitious-author benchmark, with gradient ascent, gradient difference, NPO-style unlearning and the oracle.
+**Tracks.** *Diffusion (primary):* a small class-conditional UNet DDPM on CIFAR-10, one class unlearned with four methods plus the oracle. The original DDPM ([Ho et al.](https://arxiv.org/pdf/2006.11239), 35.7M parameters, 800k steps) took about 10.6 h on a TPU v3-8, far more than a free-tier budget; in 3–6 T4-hours we expect a 5–10M-parameter model trained for tens of thousands of steps with FID in the tens. That is acceptable for a *relative* audit against an oracle trained the same way, and every figure says so. *LLM (corroborating):* Qwen2.5-0.5B on a TOFU-style fictitious-author benchmark through OpenUnlearning, with gradient ascent, gradient difference, NPO and the oracle; LoRA r16 for the main cells, full fine-tune with 8-bit Adam for the H3 cells.
 
 **Baselines.** The retrain-from-scratch oracle is the reference point on every axis; the "do nothing" checkpoint is the floor.
 
 **Ablations.** Forget-set size, number of unlearning steps, and retain-data availability (the "data constraints" setting of the TMLR 2026 paper). Layer-wise: which layers' deltas carry the unlearning (mirroring DisCEdit/ModHiFi).
 
-**The expected-to-fail control.** The unmodified checkpoint goes through the entire pipeline. It must show MIA AUC well above chance on the forget set, full probe accuracy, zero relearning steps and a zero delta spectrum. If the harness reports "forgetting" for it, the harness is wrong.
+**Moved to stretch (2026-10-18).** The f-INE-style hypothesis test (needs 3–5 oracle retrains for the seed-to-seed null; the most expensive arm); the Stable Diffusion 1.5 / SD-Turbo concept-erasure arm.
+
+**The expected-to-fail control.** The unmodified checkpoint goes through the entire pipeline. It must show MIA AUC well above chance on the forget set, full probe accuracy, zero relearning steps, zero attribution drop and a zero delta spectrum. If the harness reports "forgetting" for it, the harness is wrong.
 
 ---
 
@@ -83,148 +98,113 @@ The audit rests on three approximations we make explicit and test.
 
 $$I(z, z_{\mathrm{test}}) = -\nabla \ell(z_{\mathrm{test}}, \hat\theta)^{\top} H_{\hat\theta}^{-1} \nabla \ell(z, \hat\theta),$$
 
-and the one-step unlearning estimate is $\theta_{-S} \approx \hat\theta + \tfrac{1}{n} H^{-1} \sum_{z \in S} \nabla \ell(z, \hat\theta)$. Both assume a convex, well-conditioned loss. For deep networks $H$ is indefinite and must be damped, $(H + \lambda I)$; we report how the attribution ranking changes with $\lambda$ and with a LoRA-restricted parameter subspace.
+and the one-step unlearning estimate is $\theta_{-S} \approx \hat\theta + \tfrac{1}{n} H^{-1} \sum_{z \in S} \nabla \ell(z, \hat\theta)$. Both assume a convex, well-conditioned loss. For deep networks $H$ is indefinite and must be damped, $(H + \lambda I)$, and influence estimates are known to be fragile ([Basu et al.](https://arxiv.org/abs/2006.14651)); we report how the attribution ranking changes with $\lambda$ and with a LoRA-restricted parameter subspace, and we use TRAK-style random projection to 4,096 dimensions so that per-example gradients (about 143 MB each in fp32 for a 35M-parameter UNet) are never stored whole.
 
-**Training randomness.** Two training runs from different seeds differ by about as much as removing a single example; that is the premise of f-INE's hypothesis-testing framing. We estimate the seed-to-seed null with 3–5 oracle retrains at CIFAR scale and report which forget examples remain "influential" at a controlled false-discovery rate.
+**Training randomness.** Two training runs from different seeds differ by about as much as removing a single example; that is the premise of f-INE's hypothesis-testing framing. The full f-INE-style test needs 3–5 oracle retrains and is a stretch arm; at minimum scale we report attribution drops with bootstrap CIs over retain queries and say explicitly that the seed null is not estimated.
 
-**The low-rank mechanism (H3).** Write the unlearned model as $\hat\theta + \Delta$ and ask what $\Delta$ does. If $\Delta$ is close to rank-1 per layer, it acts as a steering vector that subtracts the forget-class direction from the output while leaving feature geometry intact. That single property explains all three symptoms at once: near-chance MIA (forget-example loss is pushed up to the held-out level), high probe accuracy (features unchanged) and fast relearning (a rank-1 update is undone by a rank-1 update). The test is to compare the effective rank of $\Delta$ across methods and correlate it with relearning speed; the oracle is the full-rank control. For the diffusion track the same argument applies to the score network: class unlearning that only shifts the conditional score near the forget class's modes leaves the unconditional density unchanged, which we check by measuring how far forget-class samples drift under unconditional generation.
+**The low-rank mechanism (H3).** Write the unlearned model as $\hat\theta + \Delta$ and ask what $\Delta$ does. If $\Delta$ is close to rank-1 per layer, it acts as a steering vector that subtracts the forget-class direction from the output while leaving feature geometry intact. That single property explains all three symptoms at once: near-chance MIA (forget-example loss is pushed up to the held-out level), high probe accuracy (features unchanged) and fast relearning (a rank-1 update is undone by a rank-1 update). Two cautions shape the test. First, under LoRA the rank of $\Delta$ is at most $r$ for every method including the oracle, so the comparison is meaningless there; H3 is run only on full-parameter updates. Second, a method that moves the weights less will relearn faster regardless of rank ([From Dormant to Deleted](https://arxiv.org/html/2505.22310) predicts relearning from L2 distance; [FRAG](https://arxiv.org/abs/2608.25429) argues selectivity matters more than distance), so the test is a partial correlation controlling for $\|\Delta\|_F$. For the diffusion track the same argument applies to the score network: class unlearning that only shifts the conditional score near the forget class's modes leaves the unconditional density unchanged, which we check by measuring how far forget-class samples drift under unconditional generation.
 
 ---
 
 ## 5. Compute budget (hard cap)
 
-Diffusion track: small UNet DDPM on CIFAR-10 (about 6 T4-hours for a usable FID; a 3-hour schedule is acceptable for relative comparisons). LLM track: Qwen2.5-0.5B with LoRA. Cost assumptions: Colab Pro about US$0.20 per T4-hour; Kaggle about 30 free GPU-hours per week; rented 3090/4090 at US$0.30–0.50 per hour; Lightning AI free monthly credit.
+Diffusion track: small class-conditional UNet DDPM on CIFAR-10 (5–10M parameters; 3–6 T4-hours; FID in the tens, reported as such). LLM track: Qwen2.5-0.5B via OpenUnlearning, LoRA r16 (fp32 on T4, which has no bf16) plus full-FT cells with 8-bit Adam. **The 2026-10-18 review found the original DDPM line (a 35M-parameter model in 6 h) unrealistic**; the table below is revised. Kaggle's free quota is commonly reported as ~30 GPU-hours per week (not an official figure).
 
-| Experiment | Model | Runs × seeds | GPU-h (full) | Colab Pro | Kaggle free | Rented 3090/4090 | Lightning free |
-|---|---|---|---|---|---|---|---|
-| D1 Base DDPM training | CIFAR-10 DDPM | 1 × 6 h | 6 | ~$1.20 | $0 | ~$2.50 | within quota |
-| D2 Oracle retrains on retain set (seed null for f-INE-style test) | DDPM | 3 × 6 h | 18 | ~$3.60 | $0 | ~$7.50 | no |
-| D3 Unlearning: 4 methods × 3 seeds × 3 forget sizes (matched steps) | DDPM | 36 × 0.25 h | 9 | ~$1.80 | $0 | ~$3.60 | partial |
-| D4 MIA (multi-timestep losses) + gradient attribution | DDPM | all | 4 | ~$0.80 | $0 | ~$1.60 | within quota |
-| D5 Relearning + linear probes + $\Delta\theta$ spectra | DDPM | 36 × 0.1 h | 3.5 | ~$0.70 | $0 | ~$1.40 | within quota |
-| L1 LoRA fine-tune on TOFU-style set | 0.5B | 1 × 1 h | 1 | ~$0.20 | $0 | ~$0.40 | within quota |
-| L2 Oracle retrains (retain only) | 0.5B | 3 × 1 h | 3 | ~$0.60 | $0 | ~$1.20 | within quota |
-| L3 Unlearning: 4 methods × 3 seeds | 0.5B | 12 × 0.3 h | 3.6 | ~$0.70 | $0 | ~$1.50 | within quota |
-| L4 Evaluation, MIA, attribution, relearning, probes | 0.5B | all | 5 | ~$1 | $0 | ~$2 | within quota |
-| S1 Optional SD-1.5 / SD-Turbo concept erasure (2 methods × 2 concepts) | SD 1.5 | 4 × 2 h | 8 | ~$1.60 | $0 (16 GB ok with 8-bit optimiser) | ~$3.20 | no |
-| **Total full version** | | | **~61 (53 without S1)** | **~$12** | **$0 over ~2–3 weeks** | **~$25** | — |
+| Experiment | Model | Runs × seeds | GPU-h (revised) | Kaggle weeks |
+|---|---|---|---|---|
+| D1 Base DDPM training (5–10M params) | CIFAR-10 DDPM | 1 × 5 h | 5 | — |
+| D2 Oracle retrains on retain set | DDPM | 3 × 5 h | 15 | 0.5 |
+| D3 Unlearning: 4 methods × 3 seeds × 3 forget sizes (matched steps) | DDPM | 36 × 0.25 h | 9 | 0.3 |
+| D4 MIA (loss, LiRA-style, CMIA; multi-timestep) + projected-gradient attribution | DDPM | all | 5 | 0.2 |
+| D5 Relearning + linear probes + $\Delta\theta$ spectra and norms | DDPM | 36 × 0.1 h | 3.5 | 0.1 |
+| L1 Fine-tune on TOFU-style set (LoRA + one full-FT) | 0.5B | 2 × 1.5 h | 3 | 0.1 |
+| L2 Oracle retrains (retain only; LoRA + one full-FT) | 0.5B | 4 × 1.5 h | 6 | 0.2 |
+| L3 Unlearning: 4 methods × 3 seeds (LoRA) + 3 methods × 2 seeds (full-FT, for H3) | 0.5B | 18 × 0.4 h | 7 | 0.25 |
+| L4 Evaluation, MIA, attribution, relearning, probes | 0.5B | all | 6 | 0.2 |
+| **Total full version** | | | **~60** | **~2** |
+| S1 (stretch) f-INE seed null: 2 more oracle retrains | DDPM | 2 × 5 h | 10 | 0.3 |
+| S2 (stretch) SD-1.5 / SD-Turbo concept erasure, 2 methods × 2 concepts | SD 1.5 | 4 × 2 h | 8 | 0.3 |
 
-**Minimum viable version (~17 GPU-hours, ≤US$4 on Colab Pro or free on Kaggle).** DDPM on a 3-hour schedule (D1 = 3 h); a single oracle retrain (D2 = 3 h); 3 methods (gradient ascent, label annealing, oracle) × 2 seeds × 1 forget size (D3 = 1.5 h); D4 and D5 on 2k-image subsets (3 h). LLM side: L1, one oracle (L2 = 1 h), 3 methods × 2 seeds (L3 = 1.8 h), L4 on a 200-example evaluation set (1.5 h). S1 dropped. If the DDPM is still too slow, CelebA at 32×32 with a class-conditional attribute as the forget target, or a SmolLM-135M LLM track, are acceptable substitutes.
+**Minimum viable version (~17 GPU-hours, one Kaggle week).** DDPM on a 3-hour schedule (D1 = 3 h); a single oracle retrain (D2 = 3 h); 3 methods (gradient ascent, label annealing, oracle) × 2 seeds × 1 forget size (D3 = 1.5 h); D4 and D5 on 2k-image subsets (3 h). LLM side: L1 LoRA only, one oracle (L2 = 1.5 h), 3 methods × 2 seeds (L3 = 2.4 h), L4 on a 200-example evaluation set (1.5 h). If the DDPM is still too slow, CelebA at 32×32 with a class-conditional attribute as the forget target, or a SmolLM-135M LLM track, are acceptable substitutes.
 
-*What survives at minimum scale:* H1 (MIA AUC, probe accuracy and relearning speed are all large-effect comparisons); H3 for the method-level contrast (approximate versus oracle spectra); H2 as a two-method comparison without the training-randomness null. The full version is required for the f-INE-style hypothesis test (3–5 oracle retrains), the forget-set-size and retain-availability ablations, the H3 correlation across enough cells, and any Stable Diffusion claim.
+*What survives at minimum scale:* H2 as a two-method comparison with bootstrap CIs over retain queries (no seed null); H3 for the method-level spectrum contrast on the DDPM (the partial-correlation test is under-powered with 6 cells and reported as a trend); H1 on all three axes with loss-based MIA (LiRA/CMIA need the full version). The full version is required for the H3 correlation across enough cells, the full-FT LLM arm, the forget-set-size and retain-availability ablations, and the stronger MIA baselines.
 
-**Caching rules.** Save the base checkpoint and every unlearned checkpoint (LoRA adapters for the LLM, full UNet weights for the DDPM). Precompute per-example losses at a fixed set of 5 diffusion timesteps once per checkpoint and reuse for MIA. Compute per-example gradients once per checkpoint and store them random-projected to 4k dimensions, so that attribution across all checkpoint pairs is a CPU matrix product. Reuse the same evaluation noise seeds and prompts for every checkpoint so FID and attribution are paired.
-
----
-
-## 6. Week-by-week plan
-
-- [ ] **W1 — Train base DDPM and LoRA LLM; one oracle retrain per track.** Artifact: training curves, FID/accuracy table; this pre-registered README committed.
-- [ ] **W2 — Implement the unlearning methods and the matched-compute protocol.** Artifact: table of forget-rate and retain-utility per method.
-- [ ] **W3 — MIA and attribution modules.** Artifact: ROC curves per method; attribution-drop bar chart with CIs.
-- [ ] **W4 — Relearning, linear-probe and $\Delta\theta$-spectrum analysis.** Artifact: relearning-curve figure; rank-vs-relearning scatter.
-- [ ] **W5 — Additional oracle seeds for the f-INE-style null (full budget only); negative results; preprint v0.** Artifact: Figure 1 and the audit library's README with a "plug in any checkpoint pair" example.
+**Caching rules.** Save the base checkpoint and every unlearned checkpoint (full UNet weights; LoRA adapters or full weights for the LLM). Precompute per-example losses at a fixed set of 5 diffusion timesteps once per checkpoint and reuse for MIA. Compute per-example gradients once per checkpoint on a training-set subset and a few timestep draws, store them random-projected to 4k dimensions, so that attribution across all checkpoint pairs is a CPU matrix product. Reuse the same evaluation noise seeds and prompts for every checkpoint so FID and attribution are paired.
 
 ---
 
-## 7. Expected results and how to read either outcome
+## 6. Plan
 
-The expected headline is that MIA-based "success" is a weak certificate: most approximate methods will pass MIA while failing the relearning and probe tests, with the variational method partially closing the gap at a utility cost.
-
-If instead the approximate methods also pass the relearning and influence tests, that is a positive and surprising result worth reporting as "cheap unlearning is enough at this scale". The explanation would be that the forget set is small relative to model capacity, which the forget-set-size ablation would confirm or deny.
-
-If H3's correlation is absent, the spectra will still tell us something: identical spectra across methods would mean low-rankness is not the discriminating property and we would look instead at *which* layers carry the delta.
-
-Either way, the contribution is the audit protocol and the mechanism, and every refuted hypothesis is written up with the explanation we now believe.
+The week-by-week plan with task lists lives in [`ROADMAP.md`](ROADMAP.md). Summary: W1–2 reading and rewrite of the pre-registration in your own words; W3–4 base models, oracle and the "do nothing" control; W5–7 minimum-viable sweeps, DDPM first; W8–10 analysis, 4-page write-up, one-page summary for Prathosh A.P.
 
 ---
 
-## 8. Deliverables
+## 7. Deliverables
 
-1. **Preprint:** *"Suppressed or erased? An attribution-and-membership audit of unlearning in diffusion models and small LLMs."*
-2. **This repository as a library:** MIA, attribution, relearning, probe and spectrum modules that accept any pair of original/unlearned checkpoints.
-3. **Per-professor one-pagers.** Prathosh: the variational method's position and the f-INE-style testing. Venkatesh Babu and Biswas: the concept-erasure results and the unconditional-drift measurement. Pruthi: membership inference and the privacy framing. Bhattacharyya: the component-level (which layers' deltas carry the unlearning) analysis mirroring DisCEdit/ModHiFi. Chakraborty: holistic post-intervention evaluation in the DynEval spirit.
+1. **Preprint** (4-page workshop version first, then 6–8 pages): *"Suppressed or erased? An influence-and-membership audit of unlearning in a diffusion model and a small LLM."*
+2. **This repository as a library:** MIA, attribution, relearning, probe and spectrum modules that accept any pair of original/unlearned checkpoints, with the diffusion arm and the influence axis as the additions over OpenUnlearning.
+3. **One-page summaries** for two readers only. Prathosh A.P.: the variational method's position, the influence result, and where the f-INE-style test would go. Bhattacharyya: the component-level (which layers' deltas carry the unlearning) analysis mirroring DisCEdit/ModHiFi.
 
 ---
 
-## 9. Research protocol
+## 8. Research protocol
 
-- **Pre-register before running.** `HYPOTHESES.md` is committed before the first unlearning run.
-- **Experiment log.** `logs/EXPERIMENT_LOG.md` records config hash, git commit, expectation, observation and next change for every run.
+- **Pre-register before running.** Hypotheses, tests, models, seeds and date live in `PREREGISTRATION.md`, frozen before the first unlearning run; changes go in its Amendments appendix with a date and a reason.
+- **Experiment log.** Every run in `EXPERIMENT_LOG.md` records config hash, git commit, expectation, observation and next change; it feeds the negative-results section.
 - **Seeds.** Fixed for training, forget-set sampling, noise and prompts; three seeds (0, 1, 2) behind any plotted number.
 - **Uncertainty.** Mean plus 95% bootstrap CI; paired across checkpoints on identical prompts/noise seeds.
 - **Matched compute.** Every approximate method gets the same number of gradient steps; $\lambda$ is fixed and reported.
 - **Negative results.** The preprint states which hypotheses were refuted and what we now believe instead.
 - **Expected-to-fail control.** The "do nothing" baseline must show no forgetting on any axis before any figure is frozen.
-- **Figures** come only from single-command-reproducible runs. A CIFAR-10 result is reported as a CIFAR-10 result.
+- **Figures** come only from single-command-reproducible runs. A CIFAR-10 result from a 5–10M-parameter DDPM is reported as exactly that.
+- **"First" claims** are made only after a Semantic Scholar sweep recorded in `REVIEW.md`.
 
 ---
 
-## 10. Repository layout (planned)
+## 9. Repository layout
 
 ```
 unlearning-audit/
 ├── README.md
-├── HYPOTHESES.md                 # pre-registration, frozen 2026-10-13
-├── configs/                      # diffusion/, llm/, one YAML per method × forget-size × seed
-├── src/
-│   ├── train/                    # base DDPM, LoRA fine-tune, oracle retrains
-│   ├── unlearn/                  # gradient ascent, gradient difference, label annealing, variational, NPO
-│   └── audit/                    # the library: mia/, attribution/, relearn/, probe/, spectrum/
+├── PREREGISTRATION.md            # frozen 2026-10-13; amendments appendix
+├── REVIEW.md                     # independent review, 2026-10-18
+├── ROADMAP.md                    # milestones as task lists (progress tracker)
+├── EXPERIMENT_LOG.md             # append-only run log
+├── READING.md                    # ordered reading list
+├── requirements.txt
+├── configs/                      # one YAML per method × forget-size × seed
+├── src/                          # models/, unlearn/, audit/, analysis/ (planned; see src/README.md)
 ├── notebooks/                    # weekly artifacts; "plug in any checkpoint pair" demo
-├── results/                      # checkpoints, projected gradients, per-timestep losses, figure CSVs
-├── logs/EXPERIMENT_LOG.md
-└── paper/                        # preprint source, one-pagers/
+├── results/                      # checkpoints, projected gradients, per-timestep losses (git-ignored)
+└── paper/                        # preprint source, one-pagers/, notes/
 ```
 
 ---
 
-## 11. Related work to read first
+## 10. Related work to read first
 
-**IISc papers this audit builds on**
-
-- Prathosh A.P. et al., *Partially Blinded Unlearning: Class Unlearning from Bayesian Perspective*, AAAI 2025; *Concept Forgetting via Label Annealing*, UAI 2025; *Adapt then Unlearn*, TMLR 2025; *Unlearning in Diffusion Models under Data Constraints: A Variational Inference Approach*, TMLR 2026; *f-INE: A Hypothesis Testing Framework for Estimating Influence under Training Randomness*, ICLR 2026; *Efficient Subset Selection Using Text-Guided Data Attribution*, TMLR 2026. [prathosh.in/publications](https://prathosh.in/publications.html)
-- R. Venkatesh Babu et al. (VAL), *Concept Siever: Controllable Erasure of Concepts from Diffusion Models*, TMLR 2025; *Balancing Act*, CVPR 2024. [VAL publications](https://val.cds.iisc.ac.in/publications.html)
-- S. Biswas et al., *GenErase: Generalizable and Semantically-Aware Concept Erasure in Diffusion Models*, CVPR 2026. [Biswas publications](https://sites.google.com/iisc.ac.in/somabiswas/publications)
-- D. Pruthi, P. Maini et al., *STAMP*, ICML 2025; privacy–hallucination trade-off, EMNLP 2026 Findings. [Pruthi publications](https://danishpruthi.com/publications/)
-- C. Bhattacharyya et al., *DisCEdit*, NeurIPS 2024; *ModHiFi*, NeurIPS 2025 (Spotlight). [ML Lab publications](http://mllab.csa.iisc.ac.in/publications)
-- A. Chakraborty et al., *DynEval*, ECCV 2026. [VCL publications](http://visual-computing.in/publications/)
-
-**Canonical external papers**
-
-- P. Maini et al., *TOFU: A Task of Fictitious Unlearning for LLMs*, 2024, arXiv:2401.06121.
-- R. Zhang et al., *Negative Preference Optimization: From Catastrophic Collapse to Effective Unlearning*, 2024, arXiv:2404.05868.
-- P. W. Koh and P. Liang, *Understanding Black-box Predictions via Influence Functions*, ICML 2017, arXiv:1703.04730.
-- N. Carlini et al., *Membership Inference Attacks From First Principles* (LiRA), IEEE S&P 2022, arXiv:2112.03570.
-- S. M. Park et al., *TRAK: Attributing Model Behavior at Scale*, ICML 2023, arXiv:2303.14186.
-- R. Gandikota et al., *Erasing Concepts from Diffusion Models*, ICCV 2023, arXiv:2303.07345.
+See [`READING.md`](READING.md) for the ordered list with reasons. The must-reads: Ho et al. (DDPM), Carlini et al. (LiRA), Duan et al. (SecMI), Koh and Liang plus Basu et al. (influence functions and their fragility), Park et al. (TRAK), Golatkar et al. and Kurmanji et al. (relearn time, SCRUB), Maini et al. (TOFU), Zhang et al. (NPO), Lynch et al. and Łucki et al. (robust unlearning evaluation), Gao et al. (An Illusion of Unlearning?), Panda et al. (TMLR 2026) and f-INE (ICLR 2026).
 
 ---
 
-## 12. Faculty this work is aimed at
+## 11. Faculty this work is aimed at
 
-| Faculty | Dept | Paper this extends |
-|---|---|---|
-| Prathosh A.P. | ECE | Label annealing (UAI 2025); variational diffusion unlearning (TMLR 2026); f-INE (ICLR 2026) |
-| R. Venkatesh Babu | CDS | Concept Siever (TMLR 2025); Balancing Act (CVPR 2024) |
-| Soma Biswas | EE | GenErase (CVPR 2026); self-debiasing (WACV 2026) |
-| Danish Pruthi | CDS | STAMP (ICML 2025); privacy–hallucination trade-off (EMNLP 2026 Findings) |
-| Chiranjib Bhattacharyya | CSA | DisCEdit (NeurIPS 2024); ModHiFi (NeurIPS 2025) |
-| Anirban Chakraborty | CDS | DynEval (ECCV 2026) |
-| Sriram Ganapathy | EE | Self-influence guided data reweighting (EMNLP 2023) |
-| C. S. Seelamantula | EE | Score matching (ICASSP 2025), if the diffusion-score analysis is emphasised |
+| Faculty | Dept | Paper this extends | Role |
+|---|---|---|---|
+| Prathosh A.P. | ECE | *Unlearning in Diffusion Models under Data Constraints* (TMLR 2026); *f-INE* (ICLR 2026); label annealing (UAI 2025) | Primary reader |
+| Chiranjib Bhattacharyya | CSA | DisCEdit (NeurIPS 2024); ModHiFi (NeurIPS 2025) | Second reader, via the per-layer component analysis |
 
 ---
 
-## 13. License and citation
+## 12. License and citation
 
 Code: MIT. Data and figures: CC BY 4.0.
 
 ```bibtex
 @misc{unlearning-audit-2026,
-  title  = {Suppressed or erased? An attribution-and-membership audit of unlearning in diffusion models and small LLMs},
-  author = {<Your Name>},
+  title  = {Suppressed or erased? An influence-and-membership audit of unlearning in a diffusion model and a small LLM},
+  author = {Arush Badhe},
   year   = {2026},
-  note   = {Pre-registered 2026-10-13. https://github.com/Arubad/unlearning-audit}
+  note   = {Pre-registered 2026-10-13, amended 2026-10-18. https://github.com/Arubad/unlearning-audit}
 }
 ```

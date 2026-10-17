@@ -1,0 +1,22 @@
+torch>=2.3
+torchvision>=0.18
+transformers>=4.45
+diffusers>=0.30
+peft>=0.12
+trl>=0.11
+datasets>=2.20
+accelerate>=0.33
+bitsandbytes>=0.43        # 8-bit Adam for the full-FT LLM arm (H3) and the stretch SD-1.5 track
+# open-unlearning: install from https://github.com/locuslab/open-unlearning per its README (LLM track)
+numpy>=1.26
+scipy>=1.13
+scikit-learn>=1.5         # linear probes, AUC
+pandas>=2.2
+pyarrow>=16.0
+matplotlib>=3.9
+seaborn>=0.13
+torch-fidelity>=0.3.0     # FID
+rouge-score>=0.1.2        # LLM forget-set ROUGE
+wandb>=0.17
+pyyaml>=6.0
+tqdm>=4.66

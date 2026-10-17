@@ -1,0 +1,88 @@
+# D3 — Unlearning sweep on the CIFAR-10 DDPM: methods × seeds × forget sizes under matched compute.
+# The runner expands `sweep` into cells, runs each from the shared base checkpoint, saves the full
+# unlearned UNet weights, and immediately computes the cached per-example losses (D4) and Δθ spectrum (D5).
+
+experiment_id: D3_ddpm_unlearn
+project: unlearning-audit
+
+base_checkpoint: results/D1/ddpm_cifar10_base.pt      # D1 output; trained once
+oracle_checkpoints: results/D2/ddpm_cifar10_retain_s{seed}.pt
+
+model:
+  type: ddpm_unet_small           # class-conditional; target 5-10M params (amended 2026-10-18: FID in the tens is expected and acceptable)
+  class_conditional: true
+  image_size: 32
+  channels: [64, 128, 256, 256]   # trim to [32, 64, 128, 128] if the W3 pilot exceeds 10M params
+  attention_resolutions: [16]
+  timesteps: 1000
+  beta_schedule: linear
+  ema_decay: 0.9999
+
+data:
+  dataset: cifar10
+  forget_class: 3                 # "cat"
+  forget_fraction: 0.05           # overridden by sweep (fraction of the training set)
+  retain_available: true          # false = "data constraints" setting (TMLR 2026 style)
+  batch_size: 128
+  num_workers: 4
+
+unlearn:
+  method: gradient_ascent         # gradient_ascent | gradient_difference | label_annealing | variational | oracle
+  matched_steps: 2000             # identical for every approximate method
+  learning_rate: 3.0e-5
+  optimizer: adamw
+  weight_decay: 0.0
+  grad_clip: 1.0
+  gradient_difference:
+    retain_weight: 1.0
+  label_annealing:
+    anneal_steps: 2000
+    target: uniform_over_retain_classes
+  variational:
+    prior_scale: 1.0
+    kl_weight: 1.0e-3
+  seed: 0                         # overridden by sweep
+
+audit:                            # run right after each cell so caches are never recomputed
+  mia:
+    timesteps: [50, 200, 400, 600, 800]
+    n_forget: 2000
+    n_heldout: 2000
+    lira_shadow_models: 0         # loss-based only in the minimum version; LiRA uses the oracle seeds (full version)
+    class_geometry_mia: false     # CMIA (Unlearning Isn't Forgetting, ICML 2026); full version only
+  attribution:
+    projection_dim: 4096
+    projection_seed: 1234
+    hessian_damping: 1.0e-2
+    n_retain_queries: 512
+    train_subset: 5000            # per-example gradients on a subset only (amended 2026-10-18)
+    n_timestep_draws: 3
+  relearn:
+    forget_subset_fraction: 0.05
+    max_steps: 1000
+    recovery_target: 0.9
+  probe:
+    layer: mid_block
+    n_train: 4000
+    n_test: 1000
+  spectrum:
+    top_k: 5
+    per_layer: true
+    record_update_norm: true      # ||delta theta||_F per layer and total; H3 partials this out (amended 2026-10-18)
+  fid:
+    n_samples: 5000
+    eval_noise_seed: 2024         # identical across every checkpoint
+
+sweep:
+  method: [gradient_ascent, gradient_difference, label_annealing, variational]
+  forget_fraction: [0.01, 0.05, 0.10]
+  seed: [0, 1, 2]
+  # minimum-viable version: method [gradient_ascent, label_annealing], forget_fraction [0.05], seed [0, 1]
+
+control:
+  do_nothing_baseline: true       # audit the base checkpoint itself; must fail every forget test
+
+logging:
+  wandb: true
+  wandb_project: unlearning-audit
+  output_dir: results/D3
