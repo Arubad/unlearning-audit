@@ -23,7 +23,8 @@ Ten weeks, one project at a time, minimum-viable version first. Tick boxes as yo
 - [ ] D1 base class-conditional DDPM trained (3 h schedule); training curve and FID table
 - [ ] D2 one oracle retrain on the retain set (same schedule, same seed)
 - [ ] L1 LoRA fine-tune on the TOFU-style set via OpenUnlearning; L2 one oracle
-- [x] `src/audit`: attribution (TRAK-style projected gradients), relearn, probe, spectrum + norm — written 2026-10-20, not yet run on GPU; **mia is an interface + stub, not implemented**
+- [x] `src/audit`: MIA (loss/SecMI/offline-LiRA/CMIA), attribution (TRAK-style projected gradients), relearn, probe, spectrum + norm — written 2026-10-20, not yet run on GPU
+- [x] `src/llm/audit.py`: LLM audit runner (eval, MIA, attribution, probe, relearn, spectrum) wired into `llm_sweep` — written, not yet run on GPU
 - [ ] **Expected-to-fail control passes:** "do nothing" checkpoint shows MIA AUC well above 0.5, full probe accuracy, zero relearning steps, zero attribution drop, zero delta (logged)
 - [x] `src/diffusion`, `src/llm`, `src/analysis` written 2026-10-20, not yet run on GPU
 - [ ] `notebooks/00_smoke_test` passes on Kaggle (tiny UNet + 2 methods + audit)

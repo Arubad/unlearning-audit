@@ -30,14 +30,14 @@ def test_h1(records: List[Dict]) -> Dict:
     df = _df(records)
     methods = [m for m in ("gradient_ascent", "label_annealing") if m in set(df.get("method", []))]
     if df.empty or not methods or "mia_loss_auc" not in df:
-        return {"verdict": "inconclusive", "reason": "need MIA + GA/label_annealing cells (MIA module may be unimplemented)"}
+        return {"verdict": "inconclusive", "reason": "need MIA + GA/label_annealing cells"}
     base = df[df.get("method") == "do_nothing"]
     probe0 = base["probe_accuracy"].mean() if not base.empty else df["probe_accuracy"].max()
     out = {}
     for m in methods:
         sub = df[df["method"] == m]
         if sub["mia_loss_auc"].isna().all():
-            out[m] = {"verdict": "inconclusive", "reason": "MIA not implemented"}
+            out[m] = {"verdict": "inconclusive", "reason": "no finite MIA AUC for this method's cells"}
             continue
         passes = 0
         for _, row in sub.iterrows():

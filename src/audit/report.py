@@ -31,7 +31,7 @@ def assemble_record(cell: Dict, forgetting: Dict, mia: Dict, attribution: Dict, 
 def control_assertions(record: Dict) -> Dict:
     """For the do_nothing cell: everything should say 'not forgotten'."""
     checks = {
-        "mia_above_chance": (record.get("mia_loss_auc") is None) or (np.isnan(record.get("mia_loss_auc", np.nan)) or record.get("mia_loss_auc", 0) > 0.55),
+        "mia_above_chance": np.isnan(record.get("mia_loss_auc", np.nan)) or record.get("mia_loss_auc", 0) > 0.55,
         "probe_full": record.get("probe_accuracy", 1.0) >= 0.8,
         "no_relearn": record.get("relearn_steps_to_90", 0) == 0,
         "no_attr_drop": abs(record.get("attr_drop", 0.0)) < 0.05,

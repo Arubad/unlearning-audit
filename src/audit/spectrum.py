@@ -60,3 +60,39 @@ def spectrum_of_state_dicts(sd_unlearned: Dict, sd_original: Dict, top_k: int = 
 
 def spectrum_of_checkpoints(unlearned_sd: Dict, original_sd: Dict, top_k: int = 5) -> Dict:
     return spectrum_of_state_dicts(unlearned_sd, original_sd, top_k)
+
+
+def lora_delta_spectrum(model_after, model_before, top_k: int = 5) -> Dict:
+    """Per-target-module LoRA delta = (alpha/r) * B @ A, differenced between two PEFT models.
+
+    By construction each module delta has rank <= r, so the spectrum is reported for completeness but H3
+    excludes LoRA cells (the record carries ``lora: true`` so the hypothesis test can drop it).
+    """
+    import torch
+
+    def deltas(m):
+        out = {}
+        for name, mod in m.named_modules():
+            A = getattr(mod, "lora_A", None)
+            B = getattr(mod, "lora_B", None)
+            if A is None or B is None:
+                continue
+            try:
+                keys = list(A.keys()) if hasattr(A, "keys") else ["default"]
+                for k in keys:
+                    a = A[k].weight if hasattr(A, "__getitem__") else A.weight
+                    b = B[k].weight if hasattr(B, "__getitem__") else B.weight
+                    scaling = getattr(mod, "scaling", {k: 1.0})
+                    sc = scaling[k] if isinstance(scaling, dict) else float(scaling)
+                    out[f"{name}.{k}"] = (sc * (b @ a)).detach().float().cpu().numpy()
+            except Exception:
+                continue
+        return out
+
+    da, db = deltas(model_after), deltas(model_before)
+    per = {}
+    for k in da:
+        d = da[k] - db.get(k, 0.0)
+        if np.ndim(d) >= 2 and min(d.shape) >= 2:
+            per[k] = matrix_spectrum_np(np.asarray(d), top_k)
+    return {"per_layer": per, "lora": True, **aggregate_spectra(per)}

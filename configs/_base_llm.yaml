@@ -7,3 +7,10 @@ model:
 data: {forget_frac: 0.05}
 train: {learning_rate: 1.0e-4, batch_size: 8, grad_accum: 1, epochs: 5}
 eval: {max_new_tokens: 128, n_eval: 200}
+audit:
+  mia: {feature_layer: -1, n_examples: 400, seed: 0}
+  attribution: {projection_dim: 4096, projection_seed: 0, hessian_damping: 1.0e-2, n_forget: 200, n_query: 200, train_subset: 400, max_full_ft_params: 2000000}
+  probe: {feature_layer: -1, n_examples: 300}
+  relearn: {forget_subset_fraction: 0.05, learning_rate: 2.0e-5, batch_size: 4, eval_every: 20, max_steps: 200, recovery_target: 0.9}
+  spectrum: {top_k: 5}
+data: {forget_frac: 0.05, heldout_frac: 0.05}

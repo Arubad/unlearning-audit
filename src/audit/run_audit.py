@@ -1,8 +1,8 @@
 """Run the full audit for one diffusion cell: load the checkpoint pair, compute every axis, assemble the record.
 
-The MIA axis is called through ``mia.mia_suite`` which is a stub in this code
-drop (see src/audit/mia.py); the record carries NaN for it and H1 is marked
-inconclusive until MIA is implemented.  Every other axis is complete.
+The MIA axis (loss, SecMI t-error, offline LiRA with the oracle as OUT, class-geometry
+MIA) is computed by ``mia.mia_suite``; ``mia_lira_auc`` is NaN when no oracle checkpoint
+is available.  Every axis is implemented.
 """
 from __future__ import annotations
 

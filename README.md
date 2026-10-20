@@ -150,7 +150,7 @@ Each experiment is one notebook in `notebooks/` (from `tools/make_notebooks.py`)
 
 Locally: `pip install -r requirements.txt && python tests/test_audit_cores.py` runs the numpy/sklearn-only tests (schedule, AUC, spectrum, TRAK, probe, H3 partial correlation) without a GPU.
 
-**Status of the code (2026-10-20).** All modules are written and compile; the numpy/sklearn cores are unit-tested; the torch parts (DDPM training, unlearning, the audit axes, the LLM track) have not been executed on a GPU. **The MIA axis is an interface + stub** (`src/audit/mia.py`) — implement it per its docstring before evaluating H1; until then H1 is reported "inconclusive" and the other axes (H2 influence, H3 spectrum, relearning, probe) are complete. Run the smoke test first, then the do-nothing control.
+**Status of the code (2026-10-20).** All modules are written and compile; the numpy/sklearn cores are unit-tested; the torch parts (DDPM training, unlearning, the audit axes, the LLM track) have not been executed on a GPU. Every audit axis is implemented, including membership inference (`src/audit/mia.py`: loss-based, SecMI t-error, offline LiRA with the oracle retrain as the OUT distribution, and class-geometry MIA) and the full LLM audit runner (`src/llm/audit.py`: eval, MIA, TRAK-style attribution, probe, relearning, spectrum). `mia_lira_auc` is NaN when no oracle is available. Run the smoke test first, then the do-nothing control.
 
 ## 6. Plan
 

@@ -134,3 +134,80 @@ def attribution_diffusion(model_original, model_after, model_oracle, diff, datas
         so = attribution_summary(scores["original"], scores["oracle"], seed)
         res.update({"attr_drop_oracle": so["attr_drop"], "attr_drop_oracle_lo": so["attr_drop_lo"], "attr_drop_oracle_hi": so["attr_drop_hi"]})
     return res
+
+
+# ---------------------------------------------------------------- LLM attribution
+
+
+def projected_grads_llm(model, tok, examples, proj_dim: int, proj_seed: int, device, batch: int = 4, param_subset_seed: int = 0, max_params: int = 2_000_000) -> np.ndarray:
+    """phi for a list of LLM examples: per-example gradient of the answer NLL over the trainable parameters,
+    projected to ``proj_dim``.  For full-FT models the parameter vector is huge, so a fixed random coordinate
+    subset of size ``max_params`` is used (documented in the audit record); for LoRA all trainable params are used.
+    """
+    import torch
+    from torch.func import functional_call, grad, vmap
+
+    from ..llm.data import collate
+
+    params = {k: v.detach() for k, v in model.named_parameters() if v.requires_grad}
+    buffers = {k: v.detach() for k, v in model.named_buffers()}
+    total = sum(v.numel() for v in params.values())
+    coord_idx = None
+    if total > max_params:
+        rng = np.random.default_rng(param_subset_seed)
+        coord_idx = np.sort(rng.choice(total, size=max_params, replace=False))
+
+    def one(p, b, ids, attn, labels):
+        out = functional_call(model, (p, b), (), {"input_ids": ids.unsqueeze(0), "attention_mask": attn.unsqueeze(0)})
+        logits = out.logits[:, :-1]
+        tgt = labels.unsqueeze(0)[:, 1:]
+        mask = (tgt != -100).float()
+        lp = logits.gather(-1, tgt.clamp(min=0).unsqueeze(-1)).squeeze(-1) - torch.logsumexp(logits, -1)
+        return -(lp * mask).sum() / mask.sum().clamp(min=1)
+
+    out_rows = []
+    for s in range(0, len(examples), batch):
+        chunk = examples[s : s + batch]
+        b = collate(chunk, tok.pad_token_id, device)
+        try:
+            g = vmap(grad(one), in_dims=(None, None, 0, 0, 0))(params, buffers, b["input_ids"], b["attention_mask"], b["labels"])
+            flat = torch.cat([g[k].reshape(len(chunk), -1) for k in params], dim=1).float().cpu().numpy()
+        except Exception:  # vmap over grad can fail for some ops; fall back to a per-example loop
+            rows = []
+            for i in range(len(chunk)):
+                gi = grad(one)(params, buffers, b["input_ids"][i], b["attention_mask"][i], b["labels"][i])
+                rows.append(torch.cat([gi[k].reshape(-1) for k in params]).float().cpu().numpy())
+            flat = np.stack(rows)
+        if coord_idx is not None:
+            flat = flat[:, coord_idx]
+        out_rows.append(project_np(flat, proj_dim, proj_seed))
+    return np.concatenate(out_rows)
+
+
+def attribution_llm(model_original, model_after, model_oracle, tok, forget_ex, retain_ex, cfg: Dict, device, seed: int = 0) -> Dict[str, float]:
+    a = cfg["audit"]["attribution"]
+    rng = np.random.default_rng(seed)
+    nf = min(int(a.get("n_forget", 200)), len(forget_ex))
+    nq = min(int(a.get("n_query", 200)), len(retain_ex))
+    forget = [forget_ex[i] for i in rng.choice(len(forget_ex), size=nf, replace=False)]
+    train = [retain_ex[i] for i in rng.choice(len(retain_ex), size=min(int(a.get("train_subset", 400)), len(retain_ex)), replace=False)]
+    queries = train[:nq]
+    d, ps, lam = int(a["projection_dim"]), int(a["projection_seed"]), float(a["hessian_damping"])
+    mp = int(a.get("max_full_ft_params", 2_000_000))
+    scores = {}
+    for name, m in (("original", model_original), ("after", model_after), ("oracle", model_oracle)):
+        if m is None:
+            continue
+        m.eval()
+        phi_tr = projected_grads_llm(m, tok, train, d, ps, device, max_params=mp)
+        phi_f = projected_grads_llm(m, tok, forget, d, ps, device, max_params=mp)
+        phi_q = phi_tr[: len(queries)]
+        scores[name] = trak_scores_np(phi_tr, phi_f, phi_q, lam)
+    res = {}
+    s = attribution_summary(scores["original"], scores["after"], seed)
+    res.update({k: v for k, v in s.items() if not k.endswith("per_example")})
+    res["attr_surviving_influence_per_example"] = s["attr_surviving_influence_per_example"]
+    if "oracle" in scores:
+        so = attribution_summary(scores["original"], scores["oracle"], seed)
+        res.update({"attr_drop_oracle": so["attr_drop"], "attr_drop_oracle_lo": so["attr_drop_lo"], "attr_drop_oracle_hi": so["attr_drop_hi"]})
+    return res

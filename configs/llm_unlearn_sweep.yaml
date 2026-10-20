@@ -1,27 +1,84 @@
-# L3 unlearn + L4 audit.  LoRA cells for H1/H2; full_ft cells for H3.
 experiment_id: L3_llm_unlearn
 base_checkpoint: results/llm_checkpoints/base_lora_f0.05_s0
 oracle_checkpoint: results/llm_checkpoints/oracle_lora_f0.05_s0
-model: {name: Qwen/Qwen2.5-0.5B-Instruct, dtype: float32, max_length: 512, lora: {r: 16, alpha: 32, dropout: 0.05, target_modules: [q_proj, k_proj, v_proj, o_proj]}}
-data: {forget_frac: 0.05}
-eval: {max_new_tokens: 128, n_eval: 200}
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+  dtype: float32
+  max_length: 512
+  lora:
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+data:
+  forget_frac: 0.05
+  heldout_frac: 0.05
+eval:
+  max_new_tokens: 128
+  n_eval: 200
 unlearn:
   method: gradient_ascent
   forget_frac: 0.05
   retain_available: true
   full_ft: false
   steps: 400
-  learning_rate: 1.0e-5
+  learning_rate: 1.0e-05
   ascent_bound: 5.0
   npo_beta: 0.1
   retain_weight: 1.0
   batch_size: 8
   seed: 0
-expected: {default: "GA/GradDiff/NPO suppress forget ROUGE but influence survives and relearning is fast vs oracle"}
+expected:
+  default: GA/GradDiff/NPO suppress forget ROUGE but influence survives and relearning
+    is fast vs oracle
 sweep:
-  method: [gradient_ascent, gradient_difference, npo, oracle, do_nothing]
-  seed: [0, 1, 2]
+  method:
+  - gradient_ascent
+  - gradient_difference
+  - npo
+  - oracle
+  - do_nothing
+  seed:
+  - 0
+  - 1
+  - 2
 sweep_minimum:
-  method: [gradient_ascent, npo, oracle, do_nothing]
-  seed: [0, 1]
-logging: {output_dir: results}
+  method:
+  - gradient_ascent
+  - npo
+  - oracle
+  - do_nothing
+  seed:
+  - 0
+  - 1
+logging:
+  output_dir: results
+audit:
+  mia:
+    feature_layer: -1
+    n_examples: 400
+    seed: 0
+  attribution:
+    projection_dim: 4096
+    projection_seed: 0
+    hessian_damping: 0.01
+    n_forget: 200
+    n_query: 200
+    train_subset: 400
+    max_full_ft_params: 2000000
+  probe:
+    feature_layer: -1
+    n_examples: 300
+  relearn:
+    forget_subset_fraction: 0.05
+    learning_rate: 2.0e-05
+    batch_size: 4
+    eval_every: 20
+    max_steps: 200
+    recovery_target: 0.9
+  spectrum:
+    top_k: 5

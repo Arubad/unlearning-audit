@@ -17,7 +17,7 @@ import torch
 
 from ..common.kaggle_env import resolve_dtype, results_root, torch_device
 from ..common.seed import derive_seed, seed_everything
-from .data import build_examples, collate, forget_retain_configs, load_tofu
+from .data import build_examples, collate, forget_retain_configs, heldout_split, load_tofu
 
 
 def adapter_dir(cfg: Dict, tag: str) -> str:
@@ -84,11 +84,23 @@ def finetune(cfg: Dict, retain_only: bool = False, full_ft: bool = False, seed: 
     dtype = resolve_dtype(cfg["model"].get("dtype", "auto"))
     tok, model = load_base(cfg, device, dtype, full_ft)
     forget_frac = float(cfg["data"]["forget_frac"])
+    _, retain_cfg = forget_retain_configs(forget_frac)
+    # A seeded slice of the retain split is held out from BOTH base and oracle training so it can serve
+    # as MIA non-members (TOFU examples the models never saw).  Indices are recorded once.
+    heldout_frac = float(cfg.get("data", {}).get("heldout_frac", 0.05))
+    retain_ds = load_tofu(retain_cfg)
+    split = heldout_split(len(retain_ds), heldout_frac, derive_seed(seed, "heldout"))
+    heldout_questions = {retain_ds[i]["question"] for i in split["heldout"]}
+    hid_path = os.path.join(results_root(), "llm_checkpoints", f"heldout_indices_f{forget_frac}_s{seed}.json")
+    os.makedirs(os.path.dirname(hid_path), exist_ok=True)
+    with open(hid_path, "w") as f:
+        json.dump({"retain_config": retain_cfg, "heldout_frac": heldout_frac, **split}, f)
     if retain_only:
-        _, retain_cfg = forget_retain_configs(forget_frac)
-        ds = load_tofu(retain_cfg)
+        ds = retain_ds.select(split["train"])
     else:
-        ds = load_tofu("full")
+        full = load_tofu("full")
+        keep = [i for i, q in enumerate(full["question"]) if q not in heldout_questions]
+        ds = full.select(keep)
     examples = build_examples(tok, ds, int(cfg["model"].get("max_length", 512)))
     hist = _train(model, tok, examples, cfg["train"], device, seed, full_ft)
     tag = f"{'oracle' if retain_only else 'base'}_{'full' if full_ft else 'lora'}_f{forget_frac}_s{seed}"
@@ -99,4 +111,4 @@ def finetune(cfg: Dict, retain_only: bool = False, full_ft: bool = False, seed: 
         model.save_pretrained(d)
     with open(os.path.join(d, "history.json"), "w") as f:
         json.dump(hist, f)
-    return {"checkpoint": d, "full_ft": full_ft, "retain_only": retain_only, "final_loss": hist[-1]["loss"] if hist else float("nan")}
+    return {"checkpoint": d, "full_ft": full_ft, "retain_only": retain_only, "heldout_indices": hid_path, "final_loss": hist[-1]["loss"] if hist else float("nan")}

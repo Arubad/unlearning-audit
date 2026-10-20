@@ -23,6 +23,19 @@ def forget_retain_configs(forget_frac: float) -> Tuple[str, str]:
     return key, FORGET_TO_RETAIN[key]
 
 
+def heldout_split(n: int, heldout_frac: float, seed: int) -> Dict[str, List[int]]:
+    """Deterministic indices into a dataset of length ``n``: a seeded held-out slice (never trained on,
+    used as MIA non-members) and the complementary training slice.  Same seed -> same split everywhere."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n)
+    k = int(round(heldout_frac * n))
+    held = sorted(int(i) for i in perm[:k])
+    train = sorted(int(i) for i in perm[k:])
+    return {"heldout": held, "train": train}
+
+
 def format_example(tokenizer, question: str, answer: str, max_len: int = 512) -> Dict:
     """Chat-formatted prompt with the answer as the target; returns input_ids and a label mask."""
     prompt = tokenizer.apply_chat_template([{"role": "user", "content": question}], tokenize=False, add_generation_prompt=True)

@@ -44,7 +44,7 @@ NOTEBOOKS = [
      ["!python -m src.run analyze", "import json,glob,os\nfor f in sorted(glob.glob(os.path.join(os.environ['RESULTS_ROOT'],'*','*','audit_record.json'))):\n    print(f); print(json.dumps({k:v for k,v in json.load(open(f)).items() if not isinstance(v,(list,dict))}, indent=1, default=float)[:600])"]),
     ("05_L1_L2_llm_finetune_oracle", "L1+L2: TOFU fine-tune + oracle", "LoRA fine-tune Qwen2.5-0.5B on TOFU + the retain-only oracle. Add --cell full_ft=true for the H3 full-parameter arm.",
      ["!python -m src.run llm_finetune --config configs/llm_base.yaml --cell forget_frac=0.05,seed=0", "!python -m src.run llm_oracle --config configs/llm_base.yaml --cell forget_frac=0.05,seed=0"]),
-    ("06_L3_L4_llm_unlearn_audit", "L3+L4: LLM unlearn + audit", "GA / GradDiff / NPO / oracle / do_nothing on TOFU. Audit modules run on the merged weights; MIA is a stub (see src/audit/mia.py).",
+    ("06_L3_L4_llm_unlearn_audit", "L3+L4: LLM unlearn + audit", "GA / GradDiff / NPO / oracle / do_nothing on TOFU, each followed by the full audit (eval, MIA, attribution, probe, relearn, spectrum).",
      ["!python -m src.run llm_sweep --config configs/llm_unlearn_sweep.yaml --minimum", "!python -m src.run analyze"]),
     ("07_analysis_and_figures", "Analysis and figures", "Apply the pre-registered H1/H2/H3 tests mechanically and draw the figures.",
      ["!python -m src.run analyze", "import json,os; print(json.dumps(json.load(open(os.path.join(os.environ['RESULTS_ROOT'],'figures','hypothesis_report.json'))), indent=2, default=str)[:4000])",

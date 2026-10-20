@@ -149,6 +149,24 @@ def test_mia_cores():
     assert np.allclose(c[0], [1, 1]) and np.allclose(c[1], [1, 1]) and np.allclose(c[2], 0)
 
 
+
+
+def test_llm_attribution_projection_is_deterministic():
+    from src.audit.attribution import project_np, trak_scores_np, attribution_summary
+    rng = np.random.default_rng(1)
+    g = rng.normal(size=(20, 5000)).astype(np.float32)
+    a = project_np(g, 128, seed=7)
+    b = project_np(g, 128, seed=7)
+    assert a.shape == (20, 128) and np.allclose(a, b)           # same seed -> same projection
+    assert not np.allclose(a, project_np(g, 128, seed=8))        # different seed -> different
+    phi_tr, phi_f, phi_q = a[:12], a[12:16], a[:4]
+    sc = trak_scores_np(phi_tr, phi_f, phi_q, lam=1e-2)
+    assert sc.shape == (4, 4)
+    # a model whose gradients shrink toward zero loses influence -> positive drop
+    summ = attribution_summary(sc, sc * 0.1)
+    assert summ["attr_drop"] > 0.5
+
+
 if __name__ == "__main__":  # noqa
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

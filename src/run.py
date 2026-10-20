@@ -87,6 +87,7 @@ def cmd_llm_oracle(args):
 
 
 def cmd_llm_sweep(args):
+    from .llm.audit import audit_llm_cell
     from .llm.unlearn import unlearn_llm
 
     base = load_yaml(args.config)
@@ -94,10 +95,21 @@ def cmd_llm_sweep(args):
         cfg = resolve(base, cell)
         cfg["logging"]["output_dir"] = results_root(cfg.get("logging", {}).get("output_dir", "results"))
         d = run_dir(cfg)
+        if args.skip_existing and os.path.exists(os.path.join(d, "audit_record.json")):
+            print("skip", cell)
+            continue
+        print(f"\n===== {cell_name(cell)}  {config_hash(cfg)} =====")
         meta = start_entry(cfg, d, "llm unlearn + audit")
         m = unlearn_llm(cfg)
+        rec = audit_llm_cell(cfg)
+        m.update({"attr_drop": rec.get("attr_drop"), "relearn_steps_to_90": rec.get("relearn_steps_to_90"), "mia_loss_auc": rec.get("mia_loss_auc")})
         finish_entry(meta, m)
-    print("LLM audit (MIA/attribution/probe) reuses src/audit on the merged weights; see notebook 06.")
+
+
+def cmd_llm_audit(args):
+    from .llm.audit import audit_llm_cell
+
+    audit_llm_cell(_prep(args))
 
 
 def cmd_analyze(args):
@@ -119,7 +131,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, fn, needs_cell in (
         ("train_base", cmd_train_base, False), ("train_classifier", cmd_train_classifier, False), ("train_oracle", cmd_train_oracle, True),
-        ("llm_finetune", cmd_llm_finetune, True), ("llm_oracle", cmd_llm_oracle, True),
+        ("llm_finetune", cmd_llm_finetune, True), ("llm_oracle", cmd_llm_oracle, True), ("llm_audit", cmd_llm_audit, True),
     ):
         s = sub.add_parser(name); s.add_argument("--config", required=True)
         if needs_cell:

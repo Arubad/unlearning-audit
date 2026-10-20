@@ -69,10 +69,22 @@ def _llm_smoke(tmp: str) -> None:
         "unlearn": {"method": "npo", "forget_frac": 0.05, "retain_available": True, "steps": 10, "learning_rate": 1e-5, "npo_beta": 0.1, "batch_size": 4, "seed": 0, "full_ft": False},
         "logging": {"output_dir": os.path.join(tmp, "results")},
     }
+    cfg["audit"] = {
+        "mia": {"feature_layer": -1, "n_examples": 32, "seed": 0},
+        "attribution": {"projection_dim": 256, "projection_seed": 0, "hessian_damping": 1e-2, "n_forget": 16, "n_query": 16, "train_subset": 32, "max_full_ft_params": 2000000},
+        "probe": {"feature_layer": -1, "n_examples": 24},
+        "relearn": {"forget_subset_fraction": 0.2, "learning_rate": 2e-5, "batch_size": 4, "eval_every": 5, "max_steps": 10, "recovery_target": 0.9},
+        "spectrum": {"top_k": 5},
+    }
+    cfg["eval"] = {"max_new_tokens": 32, "n_eval": 16}
     base = finetune(cfg, retain_only=False, full_ft=False, seed=0)
-    cfg["base_checkpoint"] = base["checkpoint"]
-    from .common.config import resolve, run_dir
+    oracle = finetune(cfg, retain_only=True, full_ft=False, seed=0)
+    from .common.config import resolve
+    from .llm.audit import audit_llm_cell
 
     c = resolve(cfg, {})
     c["base_checkpoint"] = base["checkpoint"]
+    c["oracle_checkpoint"] = oracle["checkpoint"]
     print("llm unlearn:", unlearn_llm(c))
+    rec = audit_llm_cell(c)
+    print("llm audit:", {k: rec.get(k) for k in ("mia_loss_auc", "mia_lira_auc", "attr_drop", "probe_accuracy", "relearn_steps_to_90")})
