@@ -23,9 +23,11 @@ Ten weeks, one project at a time, minimum-viable version first. Tick boxes as yo
 - [ ] D1 base class-conditional DDPM trained (3 h schedule); training curve and FID table
 - [ ] D2 one oracle retrain on the retain set (same schedule, same seed)
 - [ ] L1 LoRA fine-tune on the TOFU-style set via OpenUnlearning; L2 one oracle
-- [ ] `src/audit`: mia (loss-based, multi-timestep), attribution (projected gradients), relearn, probe, spectrum + norm
+- [x] `src/audit`: attribution (TRAK-style projected gradients), relearn, probe, spectrum + norm — written 2026-10-20, not yet run on GPU; **mia is an interface + stub, not implemented**
 - [ ] **Expected-to-fail control passes:** "do nothing" checkpoint shows MIA AUC well above 0.5, full probe accuracy, zero relearning steps, zero attribution drop, zero delta (logged)
-- [ ] Smallest end-to-end audit: one method, one seed, 2k-image subset
+- [x] `src/diffusion`, `src/llm`, `src/analysis` written 2026-10-20, not yet run on GPU
+- [ ] `notebooks/00_smoke_test` passes on Kaggle (tiny UNet + 2 methods + audit)
+- [ ] Smallest end-to-end audit on a real 2k-image subset (after D1/D2)
 
 ## Milestone 3 — Weeks 5–7: minimum-viable sweeps (~17 GPU-h), DDPM first
 - [ ] D3 gradient ascent + label annealing × 2 seeds × 5% forget size (matched steps)

@@ -1,11 +1,8 @@
-"""unlearning-audit — Did it really forget? Auditing diffusion and LLM unlearning.
+"""unlearning-audit: does approximate unlearning erase forgotten data or only suppress it?
 
-Planned modules (see src/README.md):
-    models    — small class-conditional DDPM UNet for CIFAR-10; wrappers around OpenUnlearning checkpoints (Qwen2.5-0.5B)
-    unlearn   — gradient ascent, gradient difference, label annealing, variational, NPO, oracle retrain
-    audit     — mia, attribution, relearn, probe, spectrum (+ update norm): each accepts any (original, unlearned) checkpoint pair
-    analysis  — influence-vs-relearning and rank-vs-relearning (norm-controlled) correlations, f-INE-style null (stretch), figures
-    reproduce — one-command reproduction of Figure 1
+Diffusion track (class-conditional DDPM on CIFAR-10) and LLM track (Qwen2.5-0.5B on TOFU),
+one audit library (MIA, influence, relearning, probe, Delta-theta spectrum) applied to any
+original/unlearned checkpoint pair.  Entry point: python -m src.run
 """
 
-__version__ = "0.0.0-prereg"
+__version__ = "0.2.0-code"

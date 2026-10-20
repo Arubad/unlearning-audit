@@ -1,13 +1,14 @@
-# src/ — planned modules
+# src/ — module map
 
-- `models/` — small UNet DDPM (CIFAR-10, 32×32) with EMA; class-conditional, 5–10M params; the LLM track lives in OpenUnlearning (Qwen2.5-0.5B, LoRA r16 and a full-FT arm with 8-bit Adam for H3), this package only wraps its checkpoints; checkpoint I/O (full UNet weights; LoRA adapters or full weights for the LLM).
-- `unlearn/` — `gradient_ascent`, `gradient_difference`, `label_annealing` (UAI 2025 style), `variational` (TMLR 2026 style), `npo` (LLM track), `oracle` (retrain on retain set); all share one matched-compute loop.
-- `audit/` — the library, every module takes `(ckpt_original, ckpt_unlearned, data)`:
-  - `mia.py` — loss-based, LiRA-style and class-geometry (CMIA) AUC; multi-timestep losses for diffusion, cached per checkpoint.
-  - `attribution.py` — gradient-similarity and damped influence functions on 4k-dim random-projected per-example gradients (CPU matrix products once cached); λ and LoRA-subspace sensitivity.
-  - `relearn.py` — fine-tune on 1–5 % of the forget set; steps to 90 % recovery.
-  - `probe.py` — linear probes on frozen intermediate features.
-  - `spectrum.py` — per-layer SVD of Δθ, top-5 mass, effective rank, and ‖Δθ‖_F (the norm H3 controls for); unconditional-drift measurement for diffusion. Full-parameter checkpoints only.
-- `analysis/` — attribution-drop CIs, influence-vs-relearning correlation (H2 secondary), rank-vs-relearning partial correlation controlling for norm (H3), seed-to-seed null from oracle retrains (f-INE style, stretch), all figures.
-- `utils/` — config hashing, seeding (data order, init, noise, generation), W&B wrappers.
-- `reproduce.py` — `python -m src.reproduce --figure 1` from cached checkpoints and projected gradients.
+| Package | Files | What it does |
+|---|---|---|
+| `common/` | config, seed, explog, stats, kaggle_env | copied from the DPO repo: YAML configs + cell overrides + hash, seeding, append-only log, bootstrap/Spearman/partial-Spearman, Kaggle paths/dtype |
+| `diffusion/` | `unet.py`, `ddpm.py`, `data.py`, `train.py`, `classifier.py`, `unlearn.py`, `sample.py` | 5–10M-param class-conditional UNet with a null class (CFG) and `features()` for probes; linear-schedule DDPM + DDIM-50 sampler + EMA; CIFAR splits (forget/retain/held-out, seeded, index-based); D1 base + D2 retain-only oracle; CIFAR-10 classifier for the forget-class generation rate; the five unlearning methods + do_nothing under matched steps, recording ‖Δθ‖; conditional/unconditional sampling and drift |
+| `llm/` | `data.py`, `finetune.py`, `unlearn.py`, `eval.py` | TOFU splits + chat formatting; LoRA and full-FT fine-tune + retain-only oracle (8-bit AdamW when available); GA / GradDiff / NPO / oracle / do_nothing; forget/retain ROUGE-L (own LCS), forget loss, utility |
+| `audit/` | `mia.py`, `attribution.py`, `relearn.py`, `probe.py`, `spectrum.py`, `report.py`, `run_audit.py` | the library: MIA (**interface + stub** — implement per the docstring), TRAK-style influence on 4096-dim projected gradients, few-shot relearning + steps-to-90%, logistic-regression probe on frozen mid features, per-layer SVD of Δθ (effective rank, top-5 energy, norm), record assembly + do-nothing control; `run_audit.py` runs every axis for one diffusion cell |
+| `analysis/` | `hypotheses.py`, `figures.py` | pre-registered H1/H2/H3 tests applied mechanically (thresholds from PREREGISTRATION.md), the H2↔H3 link, figures |
+| root | `run.py`, `smoke.py` | CLI (`train_base`, `train_classifier`, `train_oracle`, `sweep`, `llm_finetune`, `llm_oracle`, `llm_sweep`, `analyze`, `smoke`) |
+
+**What is NOT implemented in this code drop:** the MIA axis (`src/audit/mia.py`) is an interface + stub. Loss-based, SecMI-style, offline-LiRA and class-geometry MIA are specified in the docstring and must be written before H1 can be evaluated; until then the audit reports NaN for MIA and H1 is "inconclusive". Everything else (influence/H2, spectrum/H3, relearn, probe) is complete.
+
+**Numeric cores are unit-tested** (`tests/test_audit_cores.py`, numpy/sklearn only): schedule math, DDIM x0 recovery, AUC, matrix spectrum (rank-1 vs full), TRAK projection + scores, attribution drop, steps-to-90%, probe on separable features, the H3 norm-controlled partial Spearman, CIFAR split disjointness, do-nothing control.

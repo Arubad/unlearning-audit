@@ -133,6 +133,25 @@ Diffusion track: small class-conditional UNet DDPM on CIFAR-10 (5–10M paramete
 
 ---
 
+## 6. How to run (Kaggle)
+
+Each experiment is one notebook in `notebooks/` (from `tools/make_notebooks.py`) that clones the repo and calls `python -m src.run`. Kaggle: Accelerator **GPU T4 x2**, Internet **On**. Results land in `/kaggle/working/results`; save as a Kaggle dataset and attach to the next notebook.
+
+| Order | Notebook | Runs | GPU-h (minimum) |
+|---|---|---|---|
+| 0 | `00_smoke_test` | tiny UNet + 2 methods + audit | 0.1 |
+| 1 | `01_D1_train_base_and_classifier` | `train_base`, `train_classifier` | 3–5 |
+| 2 | `02_D2_oracle_retrain` | `train_oracle` | 3–5 |
+| 3 | `03_D3_unlearn_sweep` | `sweep --minimum` (unlearn + audit per cell) | ~6 |
+| 4 | `04_D4_D5_audit` | `analyze` | 0 |
+| 5 | `05_L1_L2_llm_finetune_oracle` | `llm_finetune`, `llm_oracle` | 3 |
+| 6 | `06_L3_L4_llm_unlearn_audit` | `llm_sweep --minimum` | ~4 |
+| 7 | `07_analysis_and_figures` | `analyze` | 0 |
+
+Locally: `pip install -r requirements.txt && python tests/test_audit_cores.py` runs the numpy/sklearn-only tests (schedule, AUC, spectrum, TRAK, probe, H3 partial correlation) without a GPU.
+
+**Status of the code (2026-10-20).** All modules are written and compile; the numpy/sklearn cores are unit-tested; the torch parts (DDPM training, unlearning, the audit axes, the LLM track) have not been executed on a GPU. **The MIA axis is an interface + stub** (`src/audit/mia.py`) — implement it per its docstring before evaluating H1; until then H1 is reported "inconclusive" and the other axes (H2 influence, H3 spectrum, relearning, probe) are complete. Run the smoke test first, then the do-nothing control.
+
 ## 6. Plan
 
 The week-by-week plan with task lists lives in [`ROADMAP.md`](ROADMAP.md). Summary: W1–2 reading and rewrite of the pre-registration in your own words; W3–4 base models, oracle and the "do nothing" control; W5–7 minimum-viable sweeps, DDPM first; W8–10 analysis, 4-page write-up, one-page summary for Prathosh A.P.
@@ -172,9 +191,11 @@ unlearning-audit/
 ├── EXPERIMENT_LOG.md             # append-only run log
 ├── READING.md                    # ordered reading list
 ├── requirements.txt
-├── configs/                      # one YAML per method × forget-size × seed
-├── src/                          # models/, unlearn/, audit/, analysis/ (planned; see src/README.md)
-├── notebooks/                    # weekly artifacts; "plug in any checkpoint pair" demo
+├── configs/                      # _base_*.yaml + diffusion/llm base and unlearn sweeps
+├── src/                          # common/, diffusion/, llm/, audit/, analysis/, run.py, smoke.py (see src/README.md)
+├── tests/                        # numpy/sklearn-only tests for the audit cores
+├── tools/make_notebooks.py       # regenerates notebooks/
+├── notebooks/                    # one Kaggle notebook per experiment, 00_smoke_test first
 ├── results/                      # checkpoints, projected gradients, per-timestep losses (git-ignored)
 └── paper/                        # preprint source, one-pagers/, notes/
 ```
