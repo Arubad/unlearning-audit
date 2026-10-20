@@ -38,6 +38,27 @@ def project_np(grads: np.ndarray, d_out: int, seed: int) -> np.ndarray:
     return out
 
 
+def project_torch(flat, d_out: int, seed: int, block: int = 2**14):
+    """Device-side projection with the same Rademacher structure as ``project_np`` (fixed seed -> fixed matrix).
+
+    ``flat``: (n, d_in) torch tensor on the compute device.  Blocks of the projection matrix are generated on the
+    device with a seeded generator each call, so the full 10M x 4096 matrix never exists and nothing is moved to
+    the CPU.  The numpy and torch projections use different RNG streams; every phi within a run uses this one.
+    """
+    import torch
+
+    device = flat.device
+    g = torch.Generator(device=device).manual_seed(seed)
+    out = torch.zeros((flat.shape[0], d_out), dtype=torch.float32, device=device)
+    scale = 1.0 / float(np.sqrt(d_out))
+    mm_dtype = torch.float16 if device.type == "cuda" else torch.float32
+    for s in range(0, flat.shape[1], block):
+        n = min(block, flat.shape[1] - s)
+        P = torch.randint(0, 2, (n, d_out), generator=g, device=device, dtype=torch.int8).to(mm_dtype) * 2 - 1
+        out += (flat[:, s : s + n].to(mm_dtype) @ P).float() * scale
+    return out
+
+
 def trak_scores_np(phi_train: np.ndarray, phi_forget: np.ndarray, phi_query: np.ndarray, lam: float = 1e-2) -> np.ndarray:
     """Return (n_forget, n_query) influence scores.  phi_* are projected gradients."""
     d = phi_train.shape[1]
@@ -76,7 +97,7 @@ def per_example_grads_torch(model, loss_fn: Callable, batches, n_params_mask: Op
     for x, y, extra in batches:
         gd = g(params, buffers, x, y, extra)
         flat = torch.cat([gd[k].reshape(x.shape[0], -1) for k in params], dim=1)
-        yield flat.float().cpu().numpy()
+        yield flat  # stays on the device; callers project before moving to the CPU
 
 
 def projected_grads_diffusion(model, diff, dataset, indices, timesteps, proj_dim: int, proj_seed: int, device, batch: int = 16) -> np.ndarray:
@@ -103,7 +124,7 @@ def projected_grads_diffusion(model, diff, dataset, indices, timesteps, proj_dim
             t = torch.full((x.shape[0],), int(tval), device=device, dtype=torch.long)
             noise = torch.randn(x.shape, generator=gen).to(device)
             for flat in per_example_grads_torch(model, loss_fn, [(x, y, (t, noise))], device=device):
-                phi = project_np(flat, proj_dim, proj_seed)
+                phi = project_torch(flat, proj_dim, proj_seed).cpu().numpy()
                 acc = phi if acc is None else acc + phi
         out.append(acc / len(timesteps))
     return np.concatenate(out)
@@ -171,16 +192,17 @@ def projected_grads_llm(model, tok, examples, proj_dim: int, proj_seed: int, dev
         b = collate(chunk, tok.pad_token_id, device)
         try:
             g = vmap(grad(one), in_dims=(None, None, 0, 0, 0))(params, buffers, b["input_ids"], b["attention_mask"], b["labels"])
-            flat = torch.cat([g[k].reshape(len(chunk), -1) for k in params], dim=1).float().cpu().numpy()
+            flat = torch.cat([g[k].reshape(len(chunk), -1) for k in params], dim=1)
         except Exception:  # vmap over grad can fail for some ops; fall back to a per-example loop
             rows = []
             for i in range(len(chunk)):
                 gi = grad(one)(params, buffers, b["input_ids"][i], b["attention_mask"][i], b["labels"][i])
-                rows.append(torch.cat([gi[k].reshape(-1) for k in params]).float().cpu().numpy())
-            flat = np.stack(rows)
+                rows.append(torch.cat([gi[k].reshape(-1) for k in params]))
+            flat = torch.stack(rows)
         if coord_idx is not None:
-            flat = flat[:, coord_idx]
-        out_rows.append(project_np(flat, proj_dim, proj_seed))
+            flat = flat[:, torch.as_tensor(coord_idx, device=flat.device)]
+        out_rows.append(project_torch(flat, proj_dim, proj_seed).cpu().numpy())
+        del flat
     return np.concatenate(out_rows)
 
 
