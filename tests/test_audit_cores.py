@@ -124,7 +124,32 @@ def test_control_assertions():
     assert control_assertions(bad)["verdict"].startswith("FAILED")
 
 
-if __name__ == "__main__":
+
+
+def test_mia_cores():
+    from src.audit.mia import auc_from_scores, lira_scores_np, cmia_scores_np, class_centroids_np, mia_from_losses
+    rng = np.random.default_rng(0)
+    # loss-based: members have lower loss
+    lm, ln = rng.normal(1.0, 0.3, 500), rng.normal(1.5, 0.3, 500)
+    assert mia_from_losses(lm, ln) > 0.8
+    assert abs(mia_from_losses(ln, ln) - 0.5) < 1e-9
+    # offline LiRA: OUT models give high loss on everyone; a memorising target gives low loss on members only
+    out = np.stack([rng.normal(1.5, 0.2, 500) for _ in range(3)])
+    s_m = lira_scores_np(lm, out)
+    s_n = lira_scores_np(ln, out)
+    assert auc_from_scores(s_m, s_n) > 0.8
+    # one OUT model falls back to the global std without error
+    assert np.isfinite(lira_scores_np(lm, out[:1])).all()
+    # class-geometry: members sit at the forget-class centroid, non-members between classes
+    cents = np.eye(3) * 5
+    feats = np.vstack([cents[1] + 0.1 * rng.normal(size=(50, 3)), 0.5 * (cents[1] + cents[2]) + 0.1 * rng.normal(size=(50, 3))])
+    sc = cmia_scores_np(feats, None, 1, cents)
+    assert auc_from_scores(sc[:50], sc[50:]) > 0.95
+    c = class_centroids_np(np.array([[0, 0], [2, 2], [1, 1]]), np.array([0, 0, 1]), 3)
+    assert np.allclose(c[0], [1, 1]) and np.allclose(c[1], [1, 1]) and np.allclose(c[2], 0)
+
+
+if __name__ == "__main__":  # noqa
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
             fn(); print("ok", name)
