@@ -1,0 +1,31 @@
+# Amendment A3 (2026-11-19, POST-HOC / EXPLORATORY — written after run v4, before any trajectory data).
+# Run v4 showed that at the matched budget (2,000 steps, lr 3e-5) no method reaches the oracle's operating point:
+# ascent-type methods destroy retain generation, the others barely forget.  Method comparisons on the ladder are only
+# meaningful at a common operating point.  Stage 1 traces (cat rate, retain accuracy) along training for a small grid
+# (seed 0); stage 2 picks one point per method by the rule below and audits it with seeds 0 and 1 (TRAK off).
+experiment_id: D6_oppoint
+forget_frac: 0.10
+trajectory:
+  eval_every: 200          # steps; plus step 0
+  n_forget_samples: 200    # cat-rate estimate per point (SE ~0.02 at a rate of 0.10)
+  retain_per_class: 20     # x 9 retain classes = 180 samples per point
+  seed: 0
+grid:                      # each entry = one trajectory run of `steps` steps
+  - {method: gradient_ascent, lr: 3.0e-6, steps: 2000}
+  - {method: gradient_ascent, lr: 1.0e-5, steps: 2000}
+  - {method: gradient_ascent, lr: 3.0e-5, steps: 2000}
+  - {method: gradient_difference, lr: 1.0e-4, steps: 2000}
+  - {method: gradient_difference, lr: 3.0e-4, steps: 2000}
+  - {method: variational_ewc, lr: 3.0e-5, steps: 2000, ewc_weight: 100.0}
+  - {method: variational_ewc, lr: 3.0e-5, steps: 2000, ewc_weight: 1000.0}
+  - {method: variational_ewc, lr: 3.0e-5, steps: 2000, ewc_weight: 10000.0}
+selection:
+  # Fixed before data.  Target = the oracles' operating point: cat rate <= the larger of the two oracle rates (0.10)
+  # with retain accuracy >= 0.90 (oracles: 0.95-0.96).  Per method, among points with step >= 1 meeting both, take
+  # the smallest step (least displacement), ties -> higher retain accuracy, then lower lr.  If none meets both, take the
+  # point with retain >= 0.90 and the lowest cat rate, and flag it `reached_target: false`.  If no point keeps
+  # retain >= 0.90, the method has no utility-preserving operating point; it is reported and not audited.
+  max_forget_rate: 0.10
+  min_retain_acc: 0.90
+extra_methods: [embedding_reset]   # zero-step methods audited directly (no trajectory)
+audit_seeds: [0, 1]

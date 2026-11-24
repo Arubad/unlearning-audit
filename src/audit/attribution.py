@@ -59,6 +59,36 @@ def project_torch(flat, d_out: int, seed: int, block: int = 2**14):
     return out
 
 
+_SKETCH_CACHE: Dict = {}
+
+
+def countsketch_torch(flat, d_out: int, seed: int):
+    """Sparse JL (CountSketch) projection: coordinate j goes to bucket h(j) with sign s(j).
+
+    E[<Sx, Sy>] = <x, y>; O(d_in) per example instead of O(d_in * d_out), and the hash/sign vectors are cached
+    once per (d_in, d_out, seed, device) instead of regenerating a dense 10M x 4096 Rademacher matrix every batch
+    (which dominated the audit's runtime).  Used for the diffusion track (amendment 2026-11-18).
+    """
+    import torch
+
+    key = (int(flat.shape[1]), int(d_out), int(seed), str(flat.device))
+    if key not in _SKETCH_CACHE:
+        g = torch.Generator(device="cpu").manual_seed(seed)
+        h = torch.randint(0, d_out, (flat.shape[1],), generator=g)
+        sgn = torch.randint(0, 2, (flat.shape[1],), generator=g).float() * 2 - 1
+        _SKETCH_CACHE[key] = (h.to(flat.device), sgn.to(flat.device))
+    h, sgn = _SKETCH_CACHE[key]
+    out = torch.zeros((flat.shape[0], d_out), dtype=torch.float32, device=flat.device)
+    out.index_add_(1, h, flat.float() * sgn)
+    return out
+
+
+def countsketch_np(grads: np.ndarray, d_out: int, seed: int) -> np.ndarray:
+    import torch
+
+    return countsketch_torch(torch.as_tensor(np.asarray(grads, np.float32)), d_out, seed).numpy()
+
+
 def trak_scores_np(phi_train: np.ndarray, phi_forget: np.ndarray, phi_query: np.ndarray, lam: float = 1e-2) -> np.ndarray:
     """Return (n_forget, n_query) influence scores.  phi_* are projected gradients."""
     d = phi_train.shape[1]
@@ -79,7 +109,7 @@ def attribution_summary(scores_original: np.ndarray, scores_after: np.ndarray, s
 # ---------------------------------------------------------------- torch wrappers
 
 
-def per_example_grads_torch(model, loss_fn: Callable, batches, n_params_mask: Optional[Dict] = None, device=None):
+def per_example_grads_torch(model, loss_fn: Callable, batches, n_params_mask: Optional[Dict] = None, device=None, chunk_size: Optional[int] = None):
     """Yield (n_batch, d) flattened per-example gradients using torch.func.
 
     ``loss_fn(params, buffers, x, y, extra)`` must return a scalar for ONE example.
@@ -93,14 +123,16 @@ def per_example_grads_torch(model, loss_fn: Callable, batches, n_params_mask: Op
     def one(p, b, x, y, extra):
         return loss_fn(p, b, x.unsqueeze(0), y.unsqueeze(0), extra)
 
-    g = vmap(grad(one), in_dims=(None, None, 0, 0, None))
+    # chunk_size bounds memory: vmap(grad) materialises activations for every example in a chunk at once
+    # (batch 16 on the 6.5M-param UNet needed ~14 GB, a whole T4 -- found on the first real run, 2026-11-19)
+    g = vmap(grad(one), in_dims=(None, None, 0, 0, None), chunk_size=chunk_size)
     for x, y, extra in batches:
         gd = g(params, buffers, x, y, extra)
         flat = torch.cat([gd[k].reshape(x.shape[0], -1) for k in params], dim=1)
         yield flat  # stays on the device; callers project before moving to the CPU
 
 
-def projected_grads_diffusion(model, diff, dataset, indices, timesteps, proj_dim: int, proj_seed: int, device, batch: int = 16) -> np.ndarray:
+def projected_grads_diffusion(model, diff, dataset, indices, timesteps, proj_dim: int, proj_seed: int, device, batch: int = 16, chunk: int = 4) -> np.ndarray:
     """phi for a list of CIFAR indices: average of projected gradients over the fixed timesteps (fixed noise)."""
     import torch
     from torch.func import functional_call
@@ -123,32 +155,52 @@ def projected_grads_diffusion(model, diff, dataset, indices, timesteps, proj_dim
         for tval in timesteps:
             t = torch.full((x.shape[0],), int(tval), device=device, dtype=torch.long)
             noise = torch.randn(x.shape, generator=gen).to(device)
-            for flat in per_example_grads_torch(model, loss_fn, [(x, y, (t, noise))], device=device):
-                phi = project_torch(flat, proj_dim, proj_seed).cpu().numpy()
-                acc = phi if acc is None else acc + phi
+            while True:
+                try:
+                    flat = next(per_example_grads_torch(model, loss_fn, [(x, y, (t, noise))], device=device, chunk_size=chunk))
+                    phi = countsketch_torch(flat, proj_dim, proj_seed).cpu().numpy()
+                    del flat
+                    break
+                except torch.OutOfMemoryError:
+                    if chunk <= 1:
+                        raise
+                    torch.cuda.empty_cache()
+                    chunk = max(1, chunk // 2)
+                    print(f"[attribution] OOM: per-example grad chunk -> {chunk}", flush=True)
+            acc = phi if acc is None else acc + phi
         out.append(acc / len(timesteps))
     return np.concatenate(out)
 
 
-def attribution_diffusion(model_original, model_after, model_oracle, diff, dataset, split: Dict, cfg: Dict, device, seed: int = 0) -> Dict[str, float]:
+def attribution_diffusion(model_original, model_after, model_oracle, diff, dataset, split: Dict, cfg: Dict, device, seed: int = 0, query_indices=None) -> Dict[str, float]:
+    """TRAK-style scores (legacy H2 statistic, kept as a secondary readout) and the influence-function prediction
+    of the per-query loss change from removing the forget set, ``pred_removal_effect`` = sum_f tau_0(f, q) at the
+    ORIGINAL model (sign: positive = removing the forget set raises q's loss).  ``query_indices`` (retain-train
+    indices, e.g. the fingerprint 'near' set) fixes the queries; default = the first n_retain_queries of the
+    training subset as before.
+    """
     a = cfg["audit"]["attribution"]
     rng = np.random.default_rng(seed)
     forget = rng.choice(split["forget"], size=min(int(a.get("n_forget", 256)), len(split["forget"])), replace=False).tolist()
     retain = rng.choice(split["retain"], size=min(int(a.get("train_subset", 2000)), len(split["retain"])), replace=False).tolist()
-    queries = retain[: int(a.get("n_retain_queries", 256))]
+    queries = list(query_indices) if query_indices is not None else retain[: int(a.get("n_retain_queries", 256))]
     ts = [int(t) for t in a.get("timesteps", [100, 400, 700])]
     d, ps, lam = int(a["projection_dim"]), int(a["projection_seed"]), float(a["hessian_damping"])
+    ck = int(a.get("grad_chunk", 4))
     res = {}
     scores = {}
     for name, m in (("original", model_original), ("after", model_after), ("oracle", model_oracle)):
         if m is None:
             continue
         m.eval()
-        phi_tr = projected_grads_diffusion(m, diff, dataset, retain, ts, d, ps, device)
-        phi_f = projected_grads_diffusion(m, diff, dataset, forget, ts, d, ps, device)
-        phi_q = phi_tr[: len(queries)]
+        phi_tr = projected_grads_diffusion(m, diff, dataset, retain, ts, d, ps, device, chunk=ck)
+        phi_f = projected_grads_diffusion(m, diff, dataset, forget, ts, d, ps, device, chunk=ck)
+        phi_q = projected_grads_diffusion(m, diff, dataset, queries, ts, d, ps, device, chunk=ck) if query_indices is not None else phi_tr[: len(queries)]
         scores[name] = trak_scores_np(phi_tr, phi_f, phi_q, lam)
     s = attribution_summary(scores["original"], scores["after"], seed)
+    # removal effect predicted at the original model, scaled to the full forget set
+    res["pred_removal_effect"] = (scores["original"].sum(0) * (len(split["forget"]) / max(len(forget), 1))).tolist()
+    res["pred_query_indices"] = [int(q) for q in queries]
     res.update({k: v for k, v in s.items() if not k.endswith("per_example")})
     res["attr_surviving_influence_per_example"] = s["attr_surviving_influence_per_example"]
     if "oracle" in scores:

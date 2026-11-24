@@ -1,0 +1,292 @@
+{
+  "P5": {
+    "verdict": "held",
+    "per_seed": {
+      "0": {
+        "pre": 0.83,
+        "forget_fraction": {
+          "1": 1.0048661800486618,
+          "4": 1.002433090024331,
+          "16": 1.0,
+          "64": 1.0,
+          "full": 1.0
+        },
+        "rows": {
+          "1": {
+            "rank": 1,
+            "delta_norm": 3.494645960983635,
+            "forget_rate": 0.004,
+            "retain_sample_accuracy": 0.10888888888888888,
+            "relearn_steps_to_90": 50.0
+          },
+          "4": {
+            "rank": 4,
+            "delta_norm": 3.4946459609836347,
+            "forget_rate": 0.006,
+            "retain_sample_accuracy": 0.11555555555555555,
+            "relearn_steps_to_90": 100.0
+          },
+          "16": {
+            "rank": 16,
+            "delta_norm": 3.4946459609836342,
+            "forget_rate": 0.008,
+            "retain_sample_accuracy": 0.1111111111111111,
+            "relearn_steps_to_90": 100.0
+          },
+          "64": {
+            "rank": 64,
+            "delta_norm": 3.494645960983635,
+            "forget_rate": 0.008,
+            "retain_sample_accuracy": 0.1111111111111111,
+            "relearn_steps_to_90": 150.0
+          },
+          "full": {
+            "rank": "full",
+            "delta_norm": 3.4946459609836347,
+            "forget_rate": 0.008,
+            "retain_sample_accuracy": 0.1111111111111111,
+            "relearn_steps_to_90": 50.0
+          }
+        },
+        "spearman_k_relearn": 0.3,
+        "low_rank_reproduces_forgetting": true,
+        "holds": true
+      },
+      "1": {
+        "pre": 0.816,
+        "forget_fraction": {
+          "1": 1.020356234096692,
+          "4": 1.0178117048346056,
+          "16": 1.0,
+          "64": 0.9974554707379135,
+          "full": 1.0
+        },
+        "rows": {
+          "1": {
+            "rank": 1,
+            "delta_norm": 3.599444590010234,
+            "forget_rate": 0.014,
+            "retain_sample_accuracy": 0.1,
+            "relearn_steps_to_90": 100.0
+          },
+          "4": {
+            "rank": 4,
+            "delta_norm": 3.5994445900102345,
+            "forget_rate": 0.016,
+            "retain_sample_accuracy": 0.10888888888888888,
+            "relearn_steps_to_90": 50.0
+          },
+          "16": {
+            "rank": 16,
+            "delta_norm": 3.599444590010234,
+            "forget_rate": 0.03,
+            "retain_sample_accuracy": 0.10666666666666667,
+            "relearn_steps_to_90": 50.0
+          },
+          "64": {
+            "rank": 64,
+            "delta_norm": 3.5994445900102345,
+            "forget_rate": 0.032,
+            "retain_sample_accuracy": 0.10666666666666667,
+            "relearn_steps_to_90": 50.0
+          },
+          "full": {
+            "rank": "full",
+            "delta_norm": 3.5994445900102345,
+            "forget_rate": 0.03,
+            "retain_sample_accuracy": 0.10666666666666667,
+            "relearn_steps_to_90": 50.0
+          }
+        },
+        "spearman_k_relearn": 0.0,
+        "low_rank_reproduces_forgetting": true,
+        "holds": true
+      }
+    }
+  },
+  "A3-a": {
+    "verdict": "failed",
+    "trajectories": [
+      {
+        "method": "gradient_ascent",
+        "lr": 1e-05,
+        "steps": 2000,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": 0
+      },
+      {
+        "method": "gradient_ascent",
+        "lr": 3e-05,
+        "steps": 2000,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": 0
+      },
+      {
+        "method": "gradient_ascent",
+        "lr": 3e-06,
+        "steps": 2000,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": 0
+      },
+      {
+        "method": "gradient_difference",
+        "lr": 0.0001,
+        "steps": 2000,
+        "first_forget_step": null,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": null
+      },
+      {
+        "method": "gradient_difference",
+        "lr": 0.0003,
+        "steps": 2000,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": true,
+        "window": 0
+      },
+      {
+        "method": "variational_ewc",
+        "lr": 3e-05,
+        "steps": 2000,
+        "ewc_weight": 100.0,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": 0
+      },
+      {
+        "method": "variational_ewc",
+        "lr": 3e-05,
+        "steps": 2000,
+        "ewc_weight": 1000.0,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": 0
+      },
+      {
+        "method": "variational_ewc",
+        "lr": 3e-05,
+        "steps": 2000,
+        "ewc_weight": 10000.0,
+        "first_forget_step": 200,
+        "first_collapse_step": 200,
+        "target_met": false,
+        "window": 0
+      }
+    ],
+    "selected": {
+      "gradient_ascent": null,
+      "gradient_difference": {
+        "step": 600,
+        "forget_rate": 0.02,
+        "retain_acc": 0.9388888888888889,
+        "entry": {
+          "method": "gradient_difference",
+          "lr": 0.0003,
+          "steps": 2000
+        },
+        "reached_target": true
+      },
+      "variational_ewc": null
+    }
+  },
+  "table": [
+    {
+      "dir": "forget_frac0p1_methodembedding_reset_seed0",
+      "method": "embedding_reset",
+      "seed": 0,
+      "reached_target": true,
+      "cat_rate": 0.128,
+      "retain_acc": 0.9488888888888889,
+      "mia_loss": 0.516362,
+      "mia_secmi": 0.51921,
+      "mia_lira": 0.547038,
+      "probe": 0.7333333333333333,
+      "relearn_steps": 250.0,
+      "relearn_ratio": 0.45454545454545453,
+      "d_over_floor_forget": 0.8269250840626742,
+      "top5_energy": 1.0,
+      "alignment": 0.008175854211484678,
+      "delta_norm": 22.475248716261195,
+      "near_loss_shift": 0.0,
+      "d_floor_near": 0.0007542185278814753
+    },
+    {
+      "dir": "forget_frac0p1_methodembedding_reset_seed1",
+      "method": "embedding_reset",
+      "seed": 1,
+      "reached_target": true,
+      "cat_rate": 0.174,
+      "retain_acc": 0.9555555555555556,
+      "mia_loss": 0.515293,
+      "mia_secmi": 0.517,
+      "mia_lira": 0.541654,
+      "probe": 0.7577777777777778,
+      "relearn_steps": 400.0,
+      "relearn_ratio": 0.8,
+      "d_over_floor_forget": 0.7533311322977878,
+      "top5_energy": 1.0,
+      "alignment": 0.00014571759900949924,
+      "delta_norm": 22.626402643378363,
+      "near_loss_shift": 0.0,
+      "d_floor_near": 0.0007542185278814753
+    },
+    {
+      "dir": "forget_frac0p1_lr0p0003_methodgradient_difference_seed0_steps600",
+      "method": "gradient_difference",
+      "seed": 0,
+      "reached_target": true,
+      "cat_rate": 0.042,
+      "retain_acc": 0.9444444444444444,
+      "mia_loss": 0.501412,
+      "mia_secmi": 0.4898465,
+      "mia_lira": 0.57762,
+      "probe": 0.7344444444444445,
+      "relearn_steps": 700.0,
+      "relearn_ratio": 1.2727272727272727,
+      "d_over_floor_forget": 166.87861813501988,
+      "top5_energy": 0.5924443773600119,
+      "alignment": 0.02078235303916579,
+      "delta_norm": 8.27192179056841
+    },
+    {
+      "dir": "forget_frac0p1_lr0p0003_methodgradient_difference_seed1_steps600",
+      "method": "gradient_difference",
+      "seed": 1,
+      "reached_target": true,
+      "cat_rate": 0.794,
+      "retain_acc": 0.8422222222222222,
+      "mia_loss": 0.494854,
+      "mia_secmi": 0.5058795,
+      "mia_lira": 0.57428,
+      "probe": 0.7366666666666667,
+      "relearn_steps": 0.0,
+      "relearn_ratio": 0.0,
+      "d_over_floor_forget": 257.5135502934081,
+      "top5_energy": 0.6363588971579388,
+      "alignment": 0.02186699930639135,
+      "delta_norm": 9.267213325995673
+    }
+  ],
+  "A3-b": {
+    "verdict": "failed"
+  },
+  "A3-c": {
+    "verdict": "failed"
+  },
+  "A3-d": {
+    "verdict": "failed"
+  },
+  "A3-e": {
+    "verdict": "failed"
+  }
+}

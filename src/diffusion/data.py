@@ -27,13 +27,72 @@ def cifar_split_indices(labels: np.ndarray, forget_class: int, forget_frac: floa
     return {"forget": forget.tolist(), "retain": retain.tolist(), "n_forget": int(n_forget), "n_retain": int(len(retain))}
 
 
+HF_URL = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/{split}-00000-of-00001.parquet"
+
+
+def _npz_path(root: str, train: bool) -> str:
+    return os.path.join(root, f"cifar10_{'train' if train else 'test'}.npz")
+
+
+def _fetch_hf(root: str, train: bool) -> str:
+    """Download the HF parquet mirror of CIFAR-10 and cache it as uint8 arrays (the Toronto server serves ~50 kB/s
+    to Colab).  NOTE: the mirror's image order differs from the official python batches (first train labels are
+    0,6,0,2,7,... vs 6,9,9,4,1,...), so split indices refer to the uoft-cs/cifar10 order.  Every run of this
+    pipeline uses the same source, so indices are consistent; mixing sources is not supported."""
+    import io
+    import urllib.request
+
+    import pandas as pd
+    from PIL import Image
+
+    os.makedirs(root, exist_ok=True)
+    split = "train" if train else "test"
+    pq = os.path.join(root, f"cifar10_{split}.parquet")
+    if not os.path.exists(pq):
+        urllib.request.urlretrieve(HF_URL.format(split=split), f"{pq}.{os.getpid()}.tmp")
+        os.replace(f"{pq}.{os.getpid()}.tmp", pq)
+    df = pd.read_parquet(pq)
+    icol = "img" if "img" in df else df.columns[0]
+    lcol = "label" if "label" in df else df.columns[1]
+    x = np.stack([np.array(Image.open(io.BytesIO(v["bytes"])).convert("RGB")) for v in df[icol]]).astype(np.uint8)
+    y = df[lcol].to_numpy().astype(np.int64)
+    out = _npz_path(root, train)
+    with open(f"{out}.{os.getpid()}.tmp", "wb") as f:
+        np.savez(f, x=x, y=y)
+    os.replace(f"{out}.{os.getpid()}.tmp", out)
+    return out
+
+
+class CIFARArrays:
+    """Minimal CIFAR-10 dataset over cached uint8 arrays; same interface the code uses (``targets``, __getitem__)."""
+
+    def __init__(self, x: np.ndarray, y: np.ndarray, transform):
+        self.data, self.targets, self.transform = x, y.tolist(), transform
+
+    def __len__(self):
+        return len(self.targets)
+
+    def __getitem__(self, i):
+        from PIL import Image
+
+        return self.transform(Image.fromarray(self.data[i])), self.targets[i]
+
+
 def load_cifar(root: str, train: bool = True):
-    import torchvision
     import torchvision.transforms as T
 
     tf = T.Compose([T.ToTensor(), T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    ds = torchvision.datasets.CIFAR10(root=root, train=train, download=True, transform=tf)
-    return ds
+    p = _npz_path(root, train)
+    if not os.path.exists(p):
+        try:
+            p = _fetch_hf(root, train)
+        except Exception as e:  # fall back to the official (slow) server
+            print(f"HF mirror failed ({e}); falling back to torchvision download")
+            import torchvision
+
+            return torchvision.datasets.CIFAR10(root=root, train=train, download=True, transform=tf)
+    z = np.load(p)
+    return CIFARArrays(z["x"], z["y"], tf)
 
 
 def cifar_labels(ds) -> np.ndarray:
@@ -57,8 +116,10 @@ def infinite(loader):
 
 def save_split(split: Dict, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
         json.dump(split, f)
+    os.replace(tmp, path)  # atomic: concurrent seed processes may write the same (deterministic) split
 
 
 def load_split(path: str) -> Dict:

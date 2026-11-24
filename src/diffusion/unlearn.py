@@ -10,6 +10,12 @@ label_annealing     our reading of Panda et al. (UAI 2025): forget images are tr
 variational_ewc     our reading of the TMLR 2026 variational method: ascent on forget +
                     diagonal-Fisher-weighted quadratic to the original parameters
                     (Fisher estimated on retain), i.e. a Gaussian posterior prior
+retain_finetune     CONTROL (amendment 2026-11-18): plain descent on retain only, same steps and lr; it never
+                    touches the forget set, so it separates "a short fine-tune is low-rank" from "forgetting
+                    is low-rank" (H3) and gives the catastrophic-forgetting reference for every other axis
+embedding_reset     (amendment A3, 2026-11-19, exploratory) zero gradient steps: re-draw the forget class's row of the
+                    class-embedding table from the layer's init distribution N(0, 1) (seeded).  Motivated by run v4: the
+                    oracle differs from the original in the never-trained class embedding, not in the denoiser
 oracle              load the retain-only retrain (D2); no steps
 do_nothing          the original checkpoint; the expected-to-fail control
 
@@ -34,9 +40,10 @@ from ..common.kaggle_env import torch_device
 from ..common.seed import derive_seed, seed_everything
 from .data import cifar_labels, infinite, load_cifar, make_loader
 from .ddpm import Diffusion
+from .train import base_path as _base_path
 from .train import ckpt_path, get_split, load_model, save_ckpt
 
-METHODS = ("gradient_ascent", "gradient_difference", "label_annealing", "variational_ewc", "oracle", "do_nothing")
+METHODS = ("gradient_ascent", "gradient_difference", "label_annealing", "variational_ewc", "retain_finetune", "embedding_reset", "oracle", "do_nothing")
 
 
 def delta_norms(model, original_sd: Dict[str, torch.Tensor]) -> Dict[str, float]:
@@ -72,7 +79,9 @@ def diagonal_fisher(model, diff: Diffusion, loader, n_batches: int, device) -> D
     return fisher
 
 
-def unlearn_cell(cfg: Dict) -> Dict:
+def unlearn_cell(cfg: Dict, callback=None, callback_every: int = 0, save: bool = True) -> Dict:
+    """``callback(model, step)`` is called after step 0 and every ``callback_every`` steps (operating-point
+    trajectories); the model is put back in train mode afterwards.  ``save=False`` skips writing the checkpoint."""
     u = cfg["unlearn"]
     method = u["method"]
     assert method in METHODS, method
@@ -83,7 +92,7 @@ def unlearn_cell(cfg: Dict) -> Dict:
     forget_frac = float(u["forget_frac"])
     retain_available = bool(u.get("retain_available", True))
 
-    base_path = cfg.get("base_checkpoint") or ckpt_path(cfg, "base", 0)
+    base_path = _base_path(cfg)
     model, ck = load_model(base_path, cfg, use_ema=True, device=device)
     original_sd = {k: v.clone() for k, v in model.state_dict().items()}
     out_path = os.path.join(out_dir, "unlearned.pt")
@@ -92,10 +101,21 @@ def unlearn_cell(cfg: Dict) -> Dict:
         save_ckpt(out_path, model, None, cfg, 0, None)
         return {"checkpoint": out_path, "steps": 0, **delta_norms(model, original_sd), "unlearn_gpu_hours": 0.0}
     if method == "oracle":
-        oracle_path = cfg.get("oracle_checkpoint") or ckpt_path(cfg, "retain", seed)
+        oracle_path = ckpt_path(cfg, "retain", seed, forget_frac)
+        if not os.path.exists(oracle_path):
+            raise FileNotFoundError(f"oracle retrain missing: {oracle_path} (run train_oracle with this seed and forget_frac)")
         omodel, _ = load_model(oracle_path, cfg, use_ema=True, device=device)
         save_ckpt(out_path, omodel, None, cfg, 0, None)
         return {"checkpoint": out_path, "steps": 0, "oracle_source": oracle_path, **delta_norms(omodel, original_sd), "unlearn_gpu_hours": 0.0}
+
+    if method == "embedding_reset":
+        fc_ = int(cfg["data"]["forget_class"])
+        g = torch.Generator().manual_seed(derive_seed(seed, "embedding_reset"))
+        with torch.no_grad():
+            row = model.class_emb.weight[fc_]
+            row.copy_(torch.randn(row.shape, generator=g).to(row.device, row.dtype))  # nn.Embedding init: N(0, 1)
+        save_ckpt(out_path, model, None, cfg, 0, None)
+        return {"checkpoint": out_path, "steps": 0, **delta_norms(model, original_sd), "unlearn_gpu_hours": 0.0}
 
     ds = load_cifar(cfg["data"].get("root", "data"))
     split = get_split(cfg, forget_frac, seed, cifar_labels(ds))
@@ -121,11 +141,15 @@ def unlearn_cell(cfg: Dict) -> Dict:
     fc = int(cfg["data"]["forget_class"])
     hist = []
     t0 = time.time()
+    if callback is not None:
+        model.eval()
+        callback(model, 0)
     model.train()
     for step in range(1, steps + 1):
         xf, yf = next(f_it)
         xf, yf = xf.to(device), yf.to(device)
         loss_terms = {}
+        loss = 0.0
         if method == "gradient_ascent" or method == "gradient_difference" or method == "variational_ewc":
             lf = diff.loss(model, xf, yf)
             # bounded ascent: once the forget loss exceeds `bound` the ascent term is switched off
@@ -141,7 +165,7 @@ def unlearn_cell(cfg: Dict) -> Dict:
             loss = lf
             loss_terms["forget_annealed_mse"] = float(lf.item())
             loss_terms["anneal_frac"] = frac
-        if retain_available and method in ("gradient_difference", "label_annealing"):
+        if method == "retain_finetune" or (retain_available and method in ("gradient_difference", "label_annealing")):
             xr, yr = next(r_it)
             xr, yr = xr.to(device), yr.to(device)
             yr = diff.train_step_labels(model, yr)
@@ -165,6 +189,12 @@ def unlearn_cell(cfg: Dict) -> Dict:
                 print(json.dumps(rec))
         if not torch.isfinite(loss):
             raise RuntimeError("non-finite loss during unlearning; lower learning_rate or ascent_bound")
+        if callback is not None and callback_every and step % callback_every == 0:
+            model.eval()
+            callback(model, step)
+            model.train()
+    if not save:
+        return {"steps": steps, "delta_norm_total": delta_norms(model, original_sd)["delta_norm_total"], "history": hist}
     save_ckpt(out_path, model, None, cfg, steps, split)
     with open(os.path.join(out_dir, "unlearn_history.json"), "w") as f:
         json.dump(hist, f)

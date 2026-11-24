@@ -1,6 +1,8 @@
 # Suppressed or erased? Auditing diffusion and LLM unlearning with influence estimation and membership inference
 
-**Status:** Pre-registration v0.2 · Week 0 of 10 · Pre-registered 2026-10-13, amended 2026-10-18 before any run · Models: small class-conditional DDPM on CIFAR-10 (32×32, primary track), Qwen2.5-0.5B on a TOFU-style set via OpenUnlearning (corroborating track) · Seeds: 0, 1, 2
+**Current state (2026-11-24):** the diffusion track is complete through study C3. The paper's finding has changed from the original plan: in class-unlearning audits of conditional DDPMs, the exact retrain's removed-label embedding is untrained, so that reference is ill-posed, and a null-label reference is calibrated (see `paper/DRAFT.md`). The LLM track was not run at scale and is future work.
+
+**Original status:** Pre-registration v0.2 · Week 0 of 10 · Pre-registered 2026-10-13, amended 2026-10-18 before any run · Models: small class-conditional DDPM on CIFAR-10 (32×32, primary track), Qwen2.5-0.5B on a TOFU-style set via OpenUnlearning (corroborating track) · Seeds: 0, 1, 2
 
 | Document | What it is |
 |---|---|
@@ -9,6 +11,8 @@
 | [`ROADMAP.md`](ROADMAP.md) | Milestones as GitHub task lists. Tick them off; this is the progress tracker. |
 | [`EXPERIMENT_LOG.md`](EXPERIMENT_LOG.md) | Append-only log, one entry per run, expectation written before launch. |
 | [`READING.md`](READING.md) | Ordered reading list with the reason for each item. |
+| [`paper/RESEARCH_JOURNAL.md`](paper/RESEARCH_JOURNAL.md) | The research argument: formal setup, theory behind each audit axis, predictions recorded before results, design rationale, process log, experiment inventory, results as they arrive. |
+| [`paper/DRAFT.md`](paper/DRAFT.md) | Paper draft (v2, 2026-11-24): the ill-posed-reference finding, the C1–C3 results and limitations; no placeholders left. Figures are still to be made. |
 
 **Problem in one sentence.** We determine whether published approximate-unlearning methods erase the influence of forgotten data or merely suppress it, measured by whether the *influence* of forget examples on the model's other outputs survives, and we test whether a property of the parameter update (its effective rank, at matched norm) explains how fast the forgotten data come back.
 
@@ -148,9 +152,9 @@ Each experiment is one notebook in `notebooks/` (from `tools/make_notebooks.py`)
 | 6 | `06_L3_L4_llm_unlearn_audit` | `llm_sweep --minimum` | ~4 |
 | 7 | `07_analysis_and_figures` | `analyze` | 0 |
 
-Locally: `pip install -r requirements.txt && python tests/test_audit_cores.py` runs the numpy/sklearn-only tests (schedule, AUC, spectrum, TRAK, probe, H3 partial correlation) without a GPU.
+Locally: `pip install -r requirements.txt && python tests/test_audit_cores.py` runs the numpy/sklearn-only tests (26 tests: schedule, AUC, spectrum, TRAK, probe, H3 partial correlation, closeness, degeneracy gate, and the C2/C3 scoring rules) without a GPU.
 
-**Status of the code (2026-10-20).** All modules are written and compile; the numpy/sklearn cores are unit-tested; the torch parts (DDPM training, unlearning, the audit axes, the LLM track) have not been executed on a GPU. Every audit axis is implemented, including membership inference (`src/audit/mia.py`: loss-based, SecMI t-error, offline LiRA with the oracle retrain as the OUT distribution, and class-geometry MIA) and the full LLM audit runner (`src/llm/audit.py`: eval, MIA, TRAK-style attribution, probe, relearning, spectrum). `mia_lira_auc` is NaN when no oracle is available. Run the smoke test first, then the do-nothing control.
+**Status of the code (2026-11-24).** The diffusion pipeline (training, oracles, unlearning sweep, audits, and the C1–C3 analyses in `src/analysis/`) has run on Kaggle T4s and Apple MPS. The LLM track is smoke-tested only. *Original note (2026-10-20):* the torch parts had not yet been executed on a GPU. Every audit axis is implemented, including membership inference (`src/audit/mia.py`: loss-based, SecMI t-error, offline LiRA with the oracle retrain as the OUT distribution, and class-geometry MIA) and the full LLM audit runner (`src/llm/audit.py`: eval, MIA, TRAK-style attribution, probe, relearning, spectrum). `mia_lira_auc` is NaN when no oracle is available. Run the smoke test first, then the do-nothing control.
 
 ## 6. Plan
 

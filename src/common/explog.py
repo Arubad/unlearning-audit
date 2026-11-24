@@ -26,7 +26,7 @@ def _gpu_name() -> str:
     return platform.processor() or "cpu"
 
 
-def start_entry(resolved: Dict[str, Any], run_dir: str, expected: str, log_path: str = "EXPERIMENT_LOG.md") -> Dict[str, Any]:
+def start_entry(resolved: Dict[str, Any], run_dir: str, expected: str, log_path: str = "") -> Dict[str, Any]:
     meta = {
         "experiment_id": resolved.get("experiment_id"),
         "cell": resolved.get("_cell", {}),
@@ -39,6 +39,7 @@ def start_entry(resolved: Dict[str, Any], run_dir: str, expected: str, log_path:
     }
     with open(os.path.join(run_dir, "run.json"), "w") as f:
         json.dump({"meta": meta, "config": {k: v for k, v in resolved.items() if not k.startswith("_")}}, f, indent=2, default=str)
+    log_path = log_path or os.environ.get("UA_EXPLOG", "EXPERIMENT_LOG.md")  # smoke runs point this elsewhere
     if os.path.exists(log_path):
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(
@@ -49,12 +50,13 @@ def start_entry(resolved: Dict[str, Any], run_dir: str, expected: str, log_path:
     return meta
 
 
-def finish_entry(meta: Dict[str, Any], metrics: Dict[str, Any], log_path: str = "EXPERIMENT_LOG.md", next_change: str = "") -> None:
+def finish_entry(meta: Dict[str, Any], metrics: Dict[str, Any], log_path: str = "", next_change: str = "") -> None:
     metrics = dict(metrics)
     metrics["_meta"] = meta
     metrics["_finished"] = _dt.datetime.now().isoformat(timespec="seconds")
     with open(os.path.join(meta["run_dir"], "metrics.json"), "w") as f:
         json.dump(metrics, f, indent=2, default=float)
+    log_path = log_path or os.environ.get("UA_EXPLOG", "EXPERIMENT_LOG.md")  # smoke runs point this elsewhere
     if os.path.exists(log_path):
         short = {k: v for k, v in metrics.items() if not k.startswith("_") and isinstance(v, (int, float, str))}
         with open(log_path, "a", encoding="utf-8") as f:

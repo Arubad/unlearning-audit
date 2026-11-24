@@ -76,6 +76,20 @@ SWEEP_KEY_PATHS: Dict[str, str] = {
     "forget_frac": "unlearn.forget_frac",
     "retain_available": "unlearn.retain_available",
     "track": "track",
+    # amendment A3 (operating-point sweep): per-cell unlearning hyperparameters
+    "lr": "unlearn.learning_rate",
+    "steps": "unlearn.steps",
+    "ewc_weight": "unlearn.ewc_weight",
+}
+
+
+# Keys that must be written to more than one place (2026-11-18 fix: the sweep's ``seed`` used to reach only
+# ``train.seed`` while the unlearning/audit code reads ``unlearn.seed``, so every seed silently ran seed 0; and
+# ``forget_frac`` never reached ``data.forget_frac``, which the oracle retrain reads).
+SWEEP_KEY_ALIASES: Dict[str, List[str]] = {
+    "seed": ["train.seed", "unlearn.seed"],
+    "forget_frac": ["unlearn.forget_frac", "data.forget_frac"],
+    "forget_class": ["data.forget_class"],  # confirmatory study C1 (2026-11-21)
 }
 
 
@@ -83,8 +97,10 @@ def resolve(config: Dict[str, Any], cell: Dict[str, Any] | None = None) -> Dict[
     """Apply a cell to a copy of the config.  The ``sweep`` block is removed."""
     cfg = copy.deepcopy(config)
     cfg.pop("sweep", None)
+    cfg.pop("sweep_minimum", None)
     for k, v in (cell or {}).items():
-        _set_dotted(cfg, SWEEP_KEY_PATHS.get(k, k), v)
+        for path in SWEEP_KEY_ALIASES.get(k, [SWEEP_KEY_PATHS.get(k, k)]):
+            _set_dotted(cfg, path, v)
     cfg["_cell"] = dict(cell or {})
     return cfg
 
@@ -110,7 +126,9 @@ def iter_cells(config: Dict[str, Any], minimum: bool = False) -> Iterator[Dict[s
 def cell_name(cell: Dict[str, Any]) -> str:
     if not cell:
         return "single"
-    return "_".join(f"{k}{str(v).replace('.', 'p')}" for k, v in cell.items())
+    # keys sorted: the name must not depend on dict insertion order (bug 2026-11-19: the truncation stage built
+    # {method, forget_frac, seed} and looked in a different directory from the sweep's {forget_frac, method, seed})
+    return "_".join(f"{k}{str(v).replace('.', 'p')}" for k, v in sorted(cell.items()))
 
 
 def run_dir(resolved: Dict[str, Any], root: str | None = None) -> str:

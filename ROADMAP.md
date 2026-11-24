@@ -38,6 +38,45 @@ Ten weeks, one project at a time, minimum-viable version first. Tick boxes as yo
 - [ ] ROC curves per method (H1)
 - [ ] Every run has a complete `EXPERIMENT_LOG.md` entry
 
+## Current state and remaining tasks (updated 2026-11-24)
+
+**Where the project is.** The diffusion track is complete through study C3. The finding changed from the original plan (see `paper/DRAFT.md`):
+- In every one of 12 exact retrains, the removed label's embedding row is untrained, so that reference is ill-posed.
+- A null-label reference is calibrated (C2, C3-B).
+- A zero-step re-draw of the row passes the removed-label audit on 30–60 % of draws (C3-A, 12/12 predictions held).
+- Re-learning only that row restores the class to ≥ 95 %, versus ≤ 25 % for retrains (C3-K, exploratory).
+
+Kaggle quota: 0.97 GPU-h left until the 2026-11-28 00:00 UTC refresh.
+
+**Write-up (no GPU)**
+- [ ] Paper figures from the existing `results/figures/*.json`:
+  - (1) the label-row norms for the retrain and the original;
+  - (2) removed-label vs null-label E with leave-one-oracle-out CIs, per class;
+  - (3) C3-A pass rates of re-draws vs methods;
+  - (4) C3-K re-fit rates;
+  - (5) per-timestep pair ratios.
+- [ ] Add a figure-generation script so every figure is reproduced by a single command (`src/analysis/`).
+- [ ] Cut `paper/DRAFT.md` to workshop length (4 pages + appendix); move the method details and the C1 negative result to the appendix.
+- [ ] Fix the citation details flagged in `paper/RESEARCH_JOURNAL.md` §9 (check every arXiv ID against its abstract).
+- [ ] Get an outside read of the draft (a collaborator, or an agent not anchored on our conclusions).
+- [ ] Pick a venue and its deadline; format to the venue's template.
+
+**Optional strengthening (after the 2026-11-28 quota refresh)**
+- [ ] Extend C3-A/C3-K to 1–2 more classes, pre-registered before data, to firm up the "30–60 %" range. This needs 3 retrains per class, about 6–7 GPU-h each.
+- [ ] A third seed for the approximate methods at a tuned operating point, if a reviewer asks for method-level claims.
+- [ ] Re-check the C3-B homogeneity margin (passed by 0.01 on truck) on any new class.
+
+**Housekeeping**
+- [ ] Make the hand-rolled test runner in `tests/test_audit_cores.py` assert the number of tests it ran. On 2026-11-24 the last 7 tests were found to be silently skipped; this is fixed, and all 26 now pass.
+- [ ] Keep `ROADMAP.md`, `README.md` and the journal inventory (§6) in sync when anything new runs.
+
+**Deferred / future work (not in this paper)**
+- [ ] LLM track (Qwen2.5-0.5B, TOFU-style): smoke-tested only, never run at scale.
+- [ ] Subset-regime and method-comparison results: appendix at most (`RESEARCH_JOURNAL.md` §7.10).
+- [ ] The stretch items below.
+
+The milestones below are the original 10-week plan (2026-10-18), kept for the record.
+
 ## Milestone 4 — Weeks 8–10: analysis and write-up
 - [ ] H1, H2, H3 each marked confirmed / refuted / under-powered against the pre-registered thresholds
 - [ ] Negative-results section drafted

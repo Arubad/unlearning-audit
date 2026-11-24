@@ -23,9 +23,16 @@ def forget_retain_configs(forget_frac: float) -> Tuple[str, str]:
     return key, FORGET_TO_RETAIN[key]
 
 
-def heldout_split(n: int, heldout_frac: float, seed: int) -> Dict[str, List[int]]:
+HELDOUT_SPLIT_SEED = 20261119  # fixed: one held-out slice shared by base, every oracle seed and every audit cell
+
+
+def heldout_split(n: int, heldout_frac: float, seed: int = HELDOUT_SPLIT_SEED) -> Dict[str, List[int]]:
     """Deterministic indices into a dataset of length ``n``: a seeded held-out slice (never trained on,
-    used as MIA non-members) and the complementary training slice.  Same seed -> same split everywhere."""
+    used as MIA non-members) and the complementary training slice.  Same seed -> same split everywhere.
+
+    The seed must NOT depend on the training/cell seed (bug fixed 2026-11-19): base, oracles and audits of every
+    seed have to agree on which examples were never trained on, or the MIA non-members of a seed-1 cell are
+    members of the seed-0 base and the oracle noise floor compares models with different training sets."""
     import numpy as np
 
     rng = np.random.default_rng(seed)

@@ -1,0 +1,271 @@
+{
+  "n_records": 28,
+  "H1": {
+    "verdict": {
+      "gradient_ascent": {
+        "verdict": "under-powered",
+        "n_seeds_pass": 0,
+        "n_seeds": 2,
+        "relearn_ratios": [
+          0.18181818181818182,
+          0.1
+        ],
+        "probe": 0.7223432621275101,
+        "mia_loss_auc": 0.502702
+      },
+      "label_annealing": {
+        "verdict": "confirmed",
+        "n_seeds_pass": 2,
+        "n_seeds": 2,
+        "relearn_ratios": [
+          0.0,
+          0.0
+        ],
+        "probe": 0.7625318711669573,
+        "mia_loss_auc": 0.517836
+      }
+    },
+    "probe_do_nothing": 0.7434017328871511,
+    "probe_oracle": 0.7499452492960273,
+    "oracle_relearn_steps": {
+      "0": 550.0,
+      "1": 500.0
+    }
+  },
+  "H2": {
+    "verdict": {
+      "class": {
+        "gradient_ascent": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": 0.17969642231598754
+        },
+        "gradient_difference": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": 0.018650555220536904
+        },
+        "label_annealing": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": -0.011713983581073178
+        },
+        "variational_ewc": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": 0.13470416821582648
+        },
+        "retain_finetune": {
+          "verdict": "control",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": -0.044141893864213466
+        },
+        "_attribution_validity_corr_pred_oracle": -0.03990512272125302,
+        "_floor_estimated": false
+      },
+      "subset": {
+        "gradient_ascent": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": -5532.769458347128,
+            "lo": -18442.95597341479,
+            "hi": -2697.107070931689
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": NaN
+        },
+        "gradient_difference": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": -4207.584973648096,
+            "lo": -14736.040737978072,
+            "hi": -2129.443540037244
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": NaN
+        },
+        "label_annealing": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": -5.731276670750569,
+            "lo": -18.47962351048087,
+            "hi": -2.979259158137107
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": NaN
+        },
+        "variational_ewc": {
+          "verdict": "inconclusive (no measurable removal trace: snr < 1.2)",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": -5016.269458360364,
+            "lo": -17764.62002044942,
+            "hi": -2512.992378594577
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": NaN
+        },
+        "retain_finetune": {
+          "verdict": "control",
+          "E_near": {
+            "mean": NaN,
+            "lo": NaN,
+            "hi": NaN
+          },
+          "E_forget": {
+            "mean": -3.88538646149859,
+            "lo": -12.949757945707685,
+            "hi": -2.0295381496121943
+          },
+          "E_heldout": NaN,
+          "E_far": NaN,
+          "fp_corr_pred_after": NaN
+        },
+        "_attribution_validity_corr_pred_oracle": NaN,
+        "_floor_estimated": false
+      }
+    },
+    "legacy_attr_drop": {
+      "do_nothing": -4.6566128730773926e-09,
+      "gradient_ascent": -2.830302119255066,
+      "gradient_difference": -79.38491821289062,
+      "label_annealing": 0.046937501057982445,
+      "oracle": -0.845058023929596,
+      "retain_finetune": 0.04575120657682419,
+      "variational_ewc": -2.9922724962234497
+    }
+  },
+  "H3": {
+    "verdict": "under-powered",
+    "top5_energy_approx": 0.7108732751121736,
+    "top5_energy_oracle": 0.24330086431621348,
+    "top5_energy_retain_finetune": 0.21455150746474555,
+    "partial_spearman_rank_relearn_given_norm": -0.7131997238879486,
+    "spearman_raw": -0.7715167498104595,
+    "partial_spearman_alignment_relearn_given_norm": 0.15108620474506237,
+    "n_cells": 8
+  },
+  "H2_H3_link": {
+    "verdict": "inconclusive",
+    "n": 0
+  },
+  "control_do_nothing": {
+    "verdict": "FAILED in diffusion/0.1/s0, diffusion/0.1/s1, diffusion/0.05/s0, diffusion/0.05/s1",
+    "cells": {
+      "diffusion/0.1/s0": {
+        "mia_above_chance": false,
+        "probe_above_chance": true,
+        "no_relearn": true,
+        "no_attr_drop": true,
+        "zero_delta": true,
+        "zero_closeness": true,
+        "verdict": "FAILED: mia_above_chance"
+      },
+      "diffusion/0.1/s1": {
+        "mia_above_chance": false,
+        "probe_above_chance": true,
+        "no_relearn": true,
+        "no_attr_drop": true,
+        "zero_delta": true,
+        "zero_closeness": true,
+        "verdict": "FAILED: mia_above_chance"
+      },
+      "diffusion/0.05/s0": {
+        "mia_above_chance": false,
+        "probe_above_chance": true,
+        "no_relearn": true,
+        "no_attr_drop": true,
+        "zero_delta": true,
+        "zero_closeness": true,
+        "verdict": "FAILED: mia_above_chance"
+      },
+      "diffusion/0.05/s1": {
+        "mia_above_chance": false,
+        "probe_above_chance": true,
+        "no_relearn": true,
+        "no_attr_drop": true,
+        "zero_delta": true,
+        "zero_closeness": true,
+        "verdict": "FAILED: mia_above_chance"
+      }
+    }
+  }
+}

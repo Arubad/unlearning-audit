@@ -89,3 +89,297 @@ Format: `YYYY-MM-DD — what changed — why — git commit`. All amendments bel
 - 2026-10-20 — **NPO implemented as Zhang et al. (2024): minimise −(2/β)·E_forget[log σ(−β(logπ_θ − logπ_ref))], reference = adapters-disabled model (LoRA) or a frozen copy (full-FT), plus retain NLL.** — commit: code drop.
 - 2026-10-20 — **MIA non-members are a seeded 5% held-out slice of the retain split, excluded from both base and oracle fine-tuning** (`data.heldout_frac`, indices recorded in `results/llm_checkpoints/heldout_indices_*.json`). — Why: a membership-inference attack needs non-members the model never saw; carving them from retain (not forget) keeps members and non-members on the same distribution so the attack measures memorisation, not class. — commit: llm-audit.
 - 2026-10-20 — **LLM audit runner implemented** (`src/llm/audit.py`): evaluate_llm, mia_suite_llm (loss NLL, Min-K% prob, offline LiRA, two-centroid CMIA), attribution_llm (projected per-example answer-NLL gradients; LoRA params for adapters, a fixed 2M-coordinate random subset for full-FT), probe (logistic regression on answer-token hidden states), relearn (fine-tune on 5% of forget, ROUGE-L recovery), spectrum (LoRA B@A delta, flagged `lora:true` and excluded from H3; full state-dict delta for full-FT). — commit: llm-audit.
+
+### Amendment 2026-11-18 — design review before the first GPU run
+
+Made after a design review on 2026-11-18, **before any base model, oracle or unlearning run existed** (`results/` empty; `EXPERIMENT_LOG.md` had only the template). Hypothesis *claims* are unchanged; their operationalisations are corrected where the old ones could not discriminate. The old statistics are still computed and reported as secondary readouts.
+
+- 2026-11-18 — **Two explicit forget regimes.** `forget_frac` is a fraction of the 50k training images, so 0.01/0.05 remove 500/2,500 *random* cats while the other cats stay in the retain set; only 0.10 removes the whole class. *Class regime* = `forget_frac 0.10` (oracle never sees a cat); *subset regime* = `forget_frac 0.05` (oracle still generates cats). H1 and the relearning part of H3 are evaluated in the class regime only: in the subset regime the oracle's forget-class generation rate is already at the pre-unlearning level, its steps-to-90% are 0, and the relearn ratio is undefined. The forget-size ablation is now a regime comparison, not a dose–response. — Why: the old design mixed class-level and example-level unlearning and divided by an oracle relearn time of 0. — commit: amendment-2026-11-18.
+- 2026-11-18 — **H2 re-operationalised: oracle-normalised closeness E** (`src/audit/fingerprint.py`). For per-example eps-MSE losses at fixed (timestep, noise) on a query set, d(a,b) = RMS difference and E(u) = (d(orig,O) − d(u,O)) / (d(orig,O) − d_floor), d_floor = distance between two oracle seeds. E = 0: no closer to the retrain than doing nothing; 1: as close as an independent retrain; < 0: moved away (over-forgetting / collateral damage). Computed on four fixed query sets: forget members, held-out forget-class images, retain images of near classes (bird, deer, dog, frog, horse) and of far classes (vehicles). *Confirmed* (per regime, per approximate method) if E_near < 0.5 with its 95% CI below 0.5 while E_forget − E_near ≥ 0.25 with non-overlapping CIs. *Refuted* if E_near ≥ 0.8. — Why: the old statistic, mean |TRAK score| of forget examples on retain queries evaluated at each checkpoint, estimates the effect of *adding* the example at that checkpoint; it is defined and non-zero for a model that never saw the example, and is expected to *grow* at the oracle (forget examples unfitted → larger gradients). "> 90% drop under retraining" was not a prediction the oracle could meet. E is the indistinguishability-from-retrain definition of unlearning applied to a functional, in the spirit of KLOM (Georgiev et al. 2024). Secondary: correlation of the retain-query loss change with the influence-function removal prediction Σ_f τ₀(f,q) at the original model; corr(oracle change, prediction) is reported as a validity check of the attribution tool. The old `attr_drop` is still reported.
+- 2026-11-18 — **Second oracle seed moved from stretch into the core design** (class regime: seeds 0 and 1). — Why: without a seed-to-seed floor no distance to the oracle can be called a gap (it is the f-INE premise); E needs it. Oracle seeds use an initialisation stream distinct from the base model's so both are exchangeable replicates.
+- 2026-11-18 — **Forget set fixed per fraction (`data.split_seed = 0`), independent of the run seed.** Run seeds vary training/unlearning randomness only. — Why: with per-seed forget sets each seed needed its own oracle and oracle seeds were not replicates of one counterfactual.
+- 2026-11-18 — **H1 reference point: the oracle, not only the pre-unlearning model.** H1's probe criterion now additionally requires the unlearned model's probe (balanced accuracy, forget class vs rest) to exceed the oracle's: a DDPM that never saw cats may still separate cat images linearly, so "probe ≥ 80% of the original" alone is not evidence of suppression. Thresholds otherwise unchanged; relearning ratio uses the same-seed oracle. Censoring: an approximate method that relearns while the oracle never reaches 90% within the budget has ratio 0.
+- 2026-11-18 — **H3: matched-steps `retain_finetune` control added and alignment measured.** `retain_finetune` = plain descent on retain data with the same steps and lr, never touching the forget set. H3's spectrum criterion additionally requires approximate methods' top-5 energy to exceed the control's by ≥ 0.2. — Why: θ_oracle − θ_base is the difference of two independent 40k-step runs and is full-rank by construction, so "approximate > 70% vs oracle < 30%" would pass for any short fine-tune. Secondary readout: relearn alignment a = cos(g_f(θ_u), Δ), with the same norm-controlled partial Spearman; in a linearised model relearning speed depends on how much of Δ the forget gradient points back through, of which low rank is one cause. Secondary intervention: per-layer rank-k truncation of Δ at matched ‖Δ‖_F (k ∈ {1, 4, 16, 64}) for the gradient-ascent cells, measuring forgetting and relearning vs k (`src.run truncate`). Relearning times that never reach the target are right-censored and tied at the maximum in rank statistics, not dropped.
+- 2026-11-18 — **Bug fixes found in review (no data affected; none had been run):** (1) the sweep key `seed` set only `train.seed` while unlearning/audit read `unlearn.seed` (every seed would have run seed 0), and `forget_frac` never reached `data.forget_frac` (the oracle retrain's split); (2) oracle checkpoints for different forget fractions shared one path; (3) the diffusion configs had no `audit.mia` block (KeyError at the first audit); (4) oracle cells skipped the audit, so `relearn_ratio_to_oracle` was never set and H1 could not be confirmed; (5) the probe passed the true class label into `features()`, so the class embedding leaked the label into the probed features — now null-class conditioned, as CMIA already was; (6) NPO's LoRA reference was `disable_adapter()` (raw pretrained Qwen, never fine-tuned on TOFU) — now a frozen copy of the fine-tuned base; (7) TRAK projection for the diffusion track switched from a dense Rademacher matrix regenerated per batch to a cached CountSketch (sparse JL; inner products preserved in expectation), for runtime.
+- 2026-11-18 — **Utility readout added:** retain-class conditional sample accuracy (classifier on 50 samples per retain class); FID stays optional.
+- 2026-11-18 — **Platform:** runs on Google Colab T4 (free tier) via the Colab CLI instead of Kaggle; checkpoints are downloaded to the local machine after every stage because free sessions can be reclaimed.
+
+### Amendment A3 2026-11-19 — after the class-regime sweep (POST-HOC; everything below is exploratory)
+
+Made **after** the 14 class-regime cells of run v4 existed, and before any of the new data. These changes are post-hoc. Results obtained under them are labelled *exploratory* and are kept apart from the pre-registered tests, which are reported as they came out (`paper/RESEARCH_JOURNAL.md` §7).
+
+- 2026-11-19 — **Operating-point comparison** (`configs/diffusion_oppoint.yaml`, `src/diffusion/oppoint.py`).
+  - What:
+    - *Trajectories.* Seed 0 traces (cat rate, retain accuracy) every 200 steps for a fixed grid: gradient ascent at lr {3e-6, 1e-5, 3e-5}; gradient difference at lr {1e-4, 3e-4}; variational EWC at lr 3e-5 with ewc_weight {1e2, 1e3, 1e4}. Each run is 2,000 steps.
+    - *Selection rule (fixed here, before any trajectory).* Target: cat rate ≤ 0.10 and retain accuracy ≥ 0.90. Take the smallest step meeting both, then the higher retain accuracy, then the lower lr. Otherwise take the lowest cat rate with retain accuracy ≥ 0.90, flagged `reached_target: false`. Otherwise the method is reported as having no utility-preserving operating point.
+    - *Audit.* The selected points are audited with seeds 0 and 1.
+  - Why: at the matched budget, ascent-type methods drove retain generation to chance and the others barely forgot. Method-level ladder claims need a common operating point.
+- 2026-11-19 — **New exploratory method `embedding_reset`.** It re-draws the cat row of the class-embedding table from N(0, 1), with zero gradient steps. Why: run v4 found that the oracle differs from the original in conditional generation but not in per-example losses, which suggests "forgetting the class" lives in the never-trained class embedding. This method tests that directly.
+- 2026-11-19 — **TRAK attribution disabled for new cells** (`audit.attribution.enabled: false`). Why: the pre-registered validity check gave corr(TRAK prediction, oracle change) ≈ −0.04 in both seeds, and TRAK took 40 of 52 minutes per cell. The 14 class-regime records keep their TRAK readout. The signed oracle-change correlation is still computed.
+- 2026-11-19 — **Harness fix: the do-nothing probe check** is changed from accuracy ≥ 0.8 (absolute, set before data) to ≥ 0.6 (above the balanced-class chance level of 0.5). Why: the original model's probe is 0.73 / 0.76 and the oracle's is 0.73 / 0.77, so the old check failed for reasons unrelated to forgetting. The MIA check is unchanged; its failure was predicted (P1) and is reported.
+- 2026-11-19 — **Post-hoc readout:** $d(u,O)/d_\text{floor}$, the distance to the oracle in units of the seed-to-seed floor, is reported where $E$ is undefined by the SNR guard. It is not a pass/fail test.
+- 2026-11-19 — **LLM protocol fixes before any LLM data:** the held-out MIA non-member split now uses a fixed seed (it was seed-dependent), and GradDiff's retain term now excludes the held-out slice. E is ported to answer-token NLL, with 2 oracle seeds.
+
+### Amendment A4 2026-11-21 — timestep decomposition and standardised closeness (POST-HOC; exploratory)
+
+- **What.**
+  - The original-vs-oracle loss difference is decomposed per timestep (12 timesteps, 10–990) and per conditioning (true label vs null), from the v4 checkpoints (`src/diffusion/timestep_decomp.py`).
+  - A timestep-standardised closeness `standardized_closeness_np` is added. It is `closeness_np` after dividing each timestep column by its oracle-pair floor.
+  - Twenty independent `embedding_reset` draws are evaluated.
+- **Why.** In v4 the plain $E$ was undefined on every query set (SNR ≈ 1), while conditional generation differed completely.
+- **Status of the readouts.**
+  - Predictions A4-a…e were written in `paper/RESEARCH_JOURNAL.md` §3 before each computation.
+  - $E_\text{std}$ is reported **alongside** the pre-registered $E$, never instead of it. The pre-registered H2 verdict stays "untestable".
+
+### Amendment A5 2026-11-21 — validity gate on classifier-based behaviour metrics (POST-HOC; measurement fix)
+
+- **Finding that prompted it.**
+  - Sampled images from the v4 checkpoints show that gradient difference **seed 0**'s cat-conditioned samples are saturated noise (100 % flagged by the gate), yet the CIFAR classifier labels 65 % of them "cat". Seed 1 still generates real cats (0 % degenerate, 76 % cat). Gradient ascent and variational EWC produce 100 % noise for every class, labelled mostly "frog".
+  - Gradient ascent's noise is labelled "frog", which made it look like it forgot.
+  - Classifier-based rates therefore do not measure forgetting on degenerate outputs.
+- **Fix.**
+  - A sample is *degenerate* if its high-frequency energy (mean squared neighbour difference) exceeds 0.1267. That is the 99.9th percentile over 5,000 real CIFAR-10 training images (max 0.158). Observed degenerate samples sit at 0.36–0.46.
+  - Every behaviour metric now records `raw`, `valid` (classified as the class AND not degenerate) and `degenerate`.
+  - Decisions use `valid`: the relearning recovery criterion, the truncation forgetting rate, and the A3 operating-point selection.
+- **Scope.**
+  - Run v5 was launched before this fix. Its A3 selection and truncation rates use the raw rate, and are re-scored locally from saved checkpoints where those exist. The trajectories save no checkpoints, so the selection rule's inputs are reported as raw, with this caveat.
+  - Pre-registered H1's rung-0 criterion is reported both ways.
+
+---
+
+## Confirmatory study C1 — registered 2026-11-21 ≈ 21:30 IST, before any C1 data exists
+
+**Claim under test.**
+- In a class-conditional ε-prediction DDPM in the generalisation regime, an exact retrain without class $k$ differs from the original on images of class $k$ **only at high noise**.
+- The unweighted timestep-averaged ε-MSE distance used by loss-based audits is therefore at the seed-to-seed floor. Such an audit cannot tell the original from an exact retrain.
+- Dividing each timestep by its own seed-to-seed floor recovers the difference, and it makes the closeness statistic $E$ calibrated: an independent retrain scores ≈ 1.
+
+**Status of the evidence so far.** The claim was found post-hoc on class 3 (cat; Amendment A4). The thresholds below were chosen *after* seeing the cat data, which passes them. **The confirmatory evidence is class 1 (automobile)**, chosen because it is maximally unlike the cat (vehicle vs animal; its near set is the other vehicles), plus a calibration on cats that uses a new third cat oracle never seen before.
+
+**New data.**
+- Oracle retrains on CIFAR-10 minus class 1, seeds 0, 1, 2.
+- Oracle retrain on CIFAR-10 minus class 3, seed 2.
+- Training recipe identical to D2: `configs/diffusion_base.yaml`, 40k steps, Kaggle T4.
+- The original model is the existing D1 base; it is not retrained.
+
+**Analysis.**
+- Code: `src/analysis/c1_report.py` and `src/diffusion/timestep_decomp.controls`, committed to the working tree before the data.
+- Measurements:
+  - $n = 256$ images per query set and common random numbers.
+  - Per-timestep ratios use 12 timesteps (10–990); the audit statistics use the audit's 5 timesteps (50, 200, 400, 600, 800).
+  - With 3 oracles, the floor is the mean pairwise oracle distance and the signal is the mean original-to-oracle distance.
+
+**Predictions (each scored held/failed, separately for class 1 and class 3).**
+
+| ID | Prediction | Threshold |
+|---|---|---|
+| C1-1 | The trace is localised at high noise | train-set ratio ≤ 1.25 at every $t \le 200$, AND ≥ 1.5 at ≥ 3 of $t \in \{500, \dots, 900\}$ |
+| C1-2 | The plain average is blind | plain audit-5 SNR < 1.2 |
+| C1-3 | Standardising recovers the trace | standardised audit-5 SNR ≥ 1.4 |
+| C1-4 | The trace is class-level, not membership | test-set (never trained on) standardised SNR ≥ 1.4, and within 0.3 of the train-set value |
+| C1-5 | No trace on other classes | near and far standardised SNR ≤ 1.2 |
+| C1-6 | Standardised $E$ is calibrated; plain $E$ cannot recognise an exact retrain | leave-one-oracle-out: in every rotation the held-out oracle's standardised $E \in [0.6, 1.4]$, while plain $E$ is undefined (SNR < 1.2) in a majority of rotations |
+
+**Interpretation rules.**
+- *The headline holds* if C1-1 to C1-3 and C1-6 hold for class 1.
+- *Class-specific* if they hold for cats but not for class 1. The paper then reports the cat result as a case study, not a general claim.
+- C1-4 and C1-5 are mechanism checks.
+- Any failure is reported with its numbers.
+
+**Not part of C1.** These are kept as secondary or exploratory, reported with their labels:
+- the method comparison (A3), rank truncation (P5), the subset regime, and the LLM track;
+- the behaviour-metric validity gate (A5) and embedding-reset draws (A4-e).
+
+**C1 outcome (scored 2026-11-22 with `src/analysis/c1_report.py`, unchanged since registration; full numbers in `paper/RESEARCH_JOURNAL.md` §7.12, `results/figures/c1_report.json`).**
+
+| | C1-1 | C1-2 | C1-3 | C1-4 | C1-5 | C1-6 |
+|---|---|---|---|---|---|---|
+| class 1 (automobile, confirmatory) | failed | failed | failed | failed | held | failed |
+| class 3 (cat, 3 oracles) | held | held | held | held | held | failed |
+
+By the interpretation rules above, the headline did **not** replicate. The timestep-localised trace is *class-specific*. It also failed calibration even on cats: in one leave-one-out rotation the held-out cat oracle scored standardised E = −0.18. The post-hoc diagnosis follows in Amendment A6.
+
+### Amendment A6 2026-11-22 — why C1 failed: the retrain's embedding for the removed label is untrained (POST-HOC; exploratory)
+
+- **By construction**, an exact retrain never sees class $k$. Its class-embedding row $k$ gets no gradient, and with weight decay 0 it keeps its random initial value: it moved 0.0000 from the seed's initial value in all 6 retrains, while every other row moved about 1.0.
+- Every C1 and A4 query conditioned on label $k$. It therefore compared the original's *trained* row $k$ against each retrain's *own random* row $k$. The "oracle" response to label $k$ is a draw-dependent arbitrary vector, not a counterfactual. The same mechanism explains why A4-e embedding-reset closeness was draw-dependent (SD 1.15).
+- Evidence, from the same images and checkpoints:
+  - Under label $k$ the three retrains disagree heterogeneously. The max/min oracle-pair distance at $t \le 400$ reaches 16.1 for automobile and 4.4 for cat.
+  - Under the **null (unconditional) label**, which every model trains through CFG dropout, the ratio is 1.1–1.2 for both classes at every $t \le 400$.
+- Null-label audit, exploratory:
+
+  | class | train plain SNR | test plain SNR | near / far | held-out retrain plain E (3 rotations) |
+  |---|---|---|---|---|
+  | automobile | 3.74 | 3.47 | 1.14 / 1.07 | 1.00, 1.01, 0.99 (CIs within ±0.03) |
+  | cat | 1.21 | 1.15 | 1.05 / 1.05 | undefined in 2 of 3 (SNR < 1.2) |
+
+  The trace sits at low and mid noise ($t$ 50–400) and is absent at $t \ge 700$.
+- Files: `results/figures/c1_embedding_diag.json`, `c1_null_label_controls.json`, `c1_pairwise_diag.json`. The code is `src/analysis/label_diag.py`, a repo copy of the scratch scripts that produced these numbers.
+
+## Confirmatory study C2 — registered 2026-11-22 ≈ 11:00 IST, before the 11:03 push; no C2 data exists
+
+**Claims under test (from Amendment A6, found post-hoc on classes 1 and 3).**
+- (a) For class-removal audits of a class-conditional diffusion model, querying the removed label is ill-posed: the exact-retrain reference's response to that label is seed-specific.
+- (b) Querying the null label gives a well-posed counterfactual. It has a homogeneous seed floor, a calibrated closeness statistic when there is a trace, a class-level (not membership) trace localised at low and mid noise, and no trace on other classes.
+
+**New data.**
+- Oracle retrains on CIFAR-10 minus **class 8 (ship)**, seeds 0, 1, 2.
+- Recipe identical to C1: `configs/diffusion_base.yaml`, 40k steps, Kaggle T4. The original is the D1 base.
+- Ship was chosen because it is neither class used to form the claim. Its near set is (0, 1, 9): airplane, automobile, truck.
+
+**Analysis.**
+- Code: `src/analysis/label_diag.py`, committed to the working tree before the data.
+- Query sets are those of `timestep_decomp.controls` (n = 256, same RNG order, common random numbers).
+- Null label = index 10. Audit statistics use the 5 audit timesteps; per-timestep ratios use 12.
+
+**Predictions (class 8; each held / failed / untestable).**
+
+| ID | Prediction | Threshold |
+|---|---|---|
+| C2-0 | Removing ships leaves a detectable null-label trace (risky: cat did not) | null-label forget-train plain SNR ≥ 1.5 |
+| C2-A | Null-label closeness is calibrated | if C2-0 held: in every leave-one-oracle-out rotation the held-out retrain's plain $E \in [0.8, 1.2]$; otherwise untestable |
+| C2-B | Null-label seed floor is homogeneous | max/min oracle-pair distance ≤ 1.3 at every $t \le 400$ |
+| C2-C | The trace is class-level | null-label forget-test plain SNR ≥ 1.5 and within 20 % of forget-train (untestable if C2-0 failed) |
+| C2-D | No trace on other classes | null-label near and far plain SNR ≤ 1.25 |
+| C2-E | The trace is at low/mid noise | max snr_t over $t \in \{50, \dots, 400\}$ ≥ 1.5 × max snr_t over $t \ge 700$ |
+| C2-F | The removed-label floor is heterogeneous | forget-label max/min oracle-pair distance ≥ 2.0 at some $t \le 400$ |
+| C2-G | Removed-label closeness is not calibrated | forget-label leave-one-out: at least one rotation has standardised $E \notin [0.6, 1.4]$ or undefined |
+
+Sanity check, not evidence: the class-8 embedding row moved < 1e-5 of its norm from init in all three retrains. *Amended ≈ 11:10 IST, while the C2 retrains were still training (no C2 data):* the first wording said an absolute 1e-6. Re-initialising locally gives 2–3e-6 on the classes 1 and 3 retrains, against row norm ≈ 16, i.e. about 1e-7 relative. That is float32 round-off between torch builds, against ≈ 0.97 for trained rows.
+
+**Interpretation rules.**
+- *Claim (b) is confirmed* if C2-0, C2-A, C2-B and C2-D hold.
+  - If C2-0 fails, calibration is untestable on ships. Claim (b) then rests on automobile alone, and trace size is reported as class-dependent.
+  - If C2-0 holds but C2-A fails, claim (b) is falsified.
+- *Claim (a) is confirmed* if C2-F and C2-G hold.
+- C2-C and C2-E are mechanism checks. Every number is reported, whatever the outcome.
+
+### C2 outcome (scored 2026-11-23 ≈ 13:30 IST with the registered code, unchanged)
+
+| ID | Observed | Verdict |
+|---|---|---|
+| sanity | ship row moved 2.1 / 3.3 / 3.4e-6 (≈ 1e-7 relative); trained rows ≈ 0.97 | held |
+| C2-0 | null forget-train plain SNR 1.85 | **held** |
+| C2-A | held-out plain E 0.94 [0.86, 1.03], 1.13 [1.04, 1.22], 0.94 [0.87, 1.02] | **held** |
+| C2-B | null pair ratio 1.24 / 1.15 / 1.06 / 1.04 / 1.11 / **1.42** at t = 10 / 50 / 100 / 200 / 300 / 400 | **failed** (t = 400) |
+| C2-C | null forget-test plain SNR 1.54 (−17 % vs train) | **held** |
+| C2-D | null near 1.08, far 1.03 | **held** |
+| C2-E | max snr_t 2.06 (t = 200) vs 0.75 at t ≥ 700 | **held** |
+| C2-F | forget-label pair ratio 3.23 at t = 200 | **held** |
+| C2-G | forget-label held-out std E 1.81, 1.14, −1.92 (plain NaN, 0.61, −0.78) | **held** |
+
+**Applying the interpretation rules.**
+- **Claim (a) is confirmed**: C2-F and C2-G held.
+- **Claim (b) is not confirmed as registered**: C2-B failed, and it is one of the four required conjuncts. The registered rule is applied as written. We do not relax the 1.3 threshold after seeing data.
+- What held inside claim (b): calibration (C2-A), class-level trace (C2-C), specificity (C2-D) and low/mid-noise localisation (C2-E).
+- What failed: floor homogeneity at t = 400 only. At t ≤ 300 the ratio is ≤ 1.24. At t = 400 the null-label ratio (1.42) is still well below the forget-label ratio there (2.13).
+
+**Unregistered observation (exploratory).** Null-label *standardised* closeness is not calibrated on ship: held-out E 0.58, 1.33, 0.57, against 0.88, 1.05, 1.02 on automobile. Plain closeness is the null-label statistic that calibrated on both classes.
+
+## Confirmatory study C3 — registered 2026-11-23 ≈ 14:35 IST, before the 14:36 push of kernel v8; no C3 data exists
+
+**Why.**
+- C2 confirmed claim (a). Claim (b) was not confirmed as registered: its homogeneity conjunct C2-B failed, while calibration held.
+- Two gaps remain.
+  - (i) *Consequence.* Does the reference choice change the verdict an auditor reaches about unlearning methods? So far every claim is about retrains only.
+  - (ii) *Generality of claim (b)* beyond automobile and ship.
+
+### C3-A — consequence for audited models (local, Apple M4 / MPS, 0 GPU-h)
+
+**Models** (forget class k ∈ {1 automobile, 8 ship}; and k = 9 once C3-B's retrains exist):
+- `do_nothing`.
+- 20 `embedding_reset` draws: original network, row k ← N(0, 1) with torch generator seeds 100–119, as in A4-e.
+- The five approximate methods of `configs/diffusion_unlearn_sweep.yaml` at its registered hyper-parameters (2000 steps, lr 3e-5): gradient_ascent, gradient_difference, label_annealing, variational_ewc, retain_finetune. Unlearning seeds 0 and 1.
+
+**Statistics** (forget-train query set of `label_diag`, n = 256, audit timesteps, the three retrains of class k as references):
+- *Removed-label audit*: forget-label standardised E (the A4 statistic; plain E also reported).
+- *Null-label audit*: null-label plain E (the statistic that calibrated in C2).
+- *Behaviour*: gated forget-class rate of 200 class-k-conditioned samples (DDIM 50, guidance 2.0, sampling seed 4242, A5 gate). The same is computed for the three retrains.
+- A model *passes the removed-label audit* if forget-label std E ∈ [0.5, 1.5] AND its gated rate ≤ (max retrain gated rate + 0.05).
+
+**Predictions (per class; each held / failed).**
+
+| ID | Prediction | Threshold |
+|---|---|---|
+| C3-A1 | The removed-label audit can be passed by an intervention that changes no data-dependent parameter | ≥ 1 of the 20 reset draws passes the removed-label audit |
+| C3-A2 | Removed-label closeness of reset draws is draw-dependent | SD over the 20 draws of forget-label std E ≥ 0.3 |
+| C3-A3 | No tested approximate method is retrain-equivalent under the null-label audit | no method × seed has null-label plain E lower 95 % CI bound ≥ 0.8 |
+| C3-A4 | Label annealing moves the null pathway *away* from the retrain: it trains the null label on forget images | label_annealing null-label plain E < 0 for both seeds |
+
+**Design property, not evidence.**
+- Every reset draw leaves the null pathway identical to the original. Its null-label E is therefore exactly 0 ("nothing removed"), the same as `do_nothing`.
+- This is consistent with A3-e: embedding_reset relearns fastest of all methods.
+
+### C3-B — fresh-class test of claim (b) (Kaggle, 3 retrains, ≈ 6.7 GPU-h)
+
+**Class choice.**
+- Drawn at random *before* any data: `np.random.default_rng(20261123)` over the unused classes {0, 2, 4, 5, 6, 7, 9}. The draw gave **class 9 (truck)**.
+- Near set (by the `label_diag` rule): (0, 1, 8).
+- Retrain seeds 0, 1, 2 with the same recipe and code as C1/C2.
+
+**Predictions.** These are C2-0 … C2-G with identical thresholds, scored by `label_diag.score_c2`, with one revision, disclosed:
+- **C3-B-B (replaces C2-B, revised after C2 data).** At every t ≤ 400, the null-label max/min oracle-pair ratio is ≤ 1.5 AND below the forget-label ratio at the same t.
+- The revision is motivated by C2 (1.42 at t = 400). It is therefore tested only on this fresh class. C2-B stays failed for ship.
+
+**Interpretation rules.**
+- Claim (b) is confirmed on truck if C2-0, C2-A, C3-B-B and C2-D hold. If C2-0 fails (weak trace, as for cat), calibration is untestable on truck.
+- Whatever the outcome, the paper reports the count of classes on which the null-label audit had power (SNR ≥ 1.5) and was calibrated.
+
+*C3-A amendment, ≈ 14:50 IST, before any C3-A data (no unlearning cell has been run; only a 50-step timing cell for ship, which is not scored).*
+- For automobile, the forget-label *standardised* SNR on the retrains is 1.18, already known from A6. That is below `closeness_np`'s `min_snr` = 1.2, so forget-label std E is undefined for every automobile model and C3-A1/A2 would be vacuous.
+- Rule: where the forget-label std SNR < 1.2, the removed-label audit uses forget-label *plain* E instead. Automobile's plain SNR is 1.22. The class and statistic used are reported for each verdict.
+- Ship (std SNR 1.53) keeps std E.
+
+### C3-B outcome (scored 2026-11-24 ≈ 00:37 IST with the registered code, unchanged)
+Truck (class 9), retrains s0–s2, code `827e2688a52f`, `label_diag.score_c3b`.
+
+| Prediction | Observed | Verdict |
+|---|---|---|
+| Sanity: forget row untrained | rows moved 3.19e-6, 3.09e-6, 1.82e-6 (relative) | held |
+| C2-0 null-label power | null plain SNR 2.44 on forget-train (std 1.88) | held |
+| C2-A null-label LOO calibration | plain E 1.08 [1.03, 1.13], 0.97 [0.92, 1.02], 0.96 [0.91, 1.01] | held |
+| C3-B-B homogeneity (revised rule) | null pair ratios at t = 10…400: 1.49, 1.19, 1.15, 1.16, 1.09, 1.18. Max 1.49 against the 1.5 bound; every value is below the forget-label ratio at the same t (6.56, 5.43, 3.71, 2.40, 2.98, 2.36) | held (thin margin at t = 10) |
+| C2-B (original rule, superseded for truck) | as above | failed, reported for completeness |
+| C2-C generalises to forget-test | null plain SNR 2.20 | held |
+| C2-D near/far null SNR ≈ 1 | 1.01 / 0.91 | held |
+| C2-E, C2-F (forget label is not homogeneous) | forget-label max pair ratio for t ≤ 400 is 6.6 | held |
+| C2-G removed-label LOO miscalibrated | std E 0.56 [0.48, 0.63], −0.95 [−1.10, −0.82], 0.86 [0.84, 0.88]; plain E NaN, −2.08, NaN | held |
+
+**Claim (b) confirmed on truck** (C2-0, C2-A, C3-B-B and C2-D all held).
+- The null-label audit is now calibrated on 3 of 4 classes: automobile, which was exploratory; ship, which was C2 (the calibration part held, homogeneity rule C2-B failed); and truck, which is C3-B. Cat is the exception: it lacks power, with null SNR 1.21.
+- Exploratory, not registered: on truck, as on ship, the null-label *standardised* E is less well calibrated than plain E (0.57, 1.15, 0.93). This supports the recommendation to use plain E.
+
+### C3-A outcome (scored 2026-11-24, 00:37–02:40 IST, locally on M4/MPS, with the registered code `c3_consequence.score_c3a`, unchanged)
+Output: `results/figures/c3a_consequence.json`. Unlearning cells are in `results/C3_unlearn/` (30 cells: 11 local MPS, 19 Kaggle v9).
+
+**Classes and settings**
+
+| Class | Removed-label statistic | Retrain gated rates | Pass threshold on rate |
+|---|---|---|---|
+| ship (8) | std E (oracle std SNR 1.53) | 0.005, 0.005, 0.000 | 0.055 |
+| automobile (1) | plain E (std SNR 1.18 < 1.2, per the amendment) | 0.010, 0.000, 0.000 | 0.060 |
+| truck (9) | std E (oracle std SNR 1.44) | 0.015, 0.035, 0.000 | 0.085 |
+
+**Per-class results**
+
+| Class | C3-A1: resets passing the removed-label audit | C3-A2: SD of reset removed-label E (range) | C3-A3: max method × seed null-E lower CI | C3-A4: label_annealing null E (s0, s1) |
+|---|---|---|---|---|
+| ship (8) | **6 / 20** (seeds 102, 108, 109, 110, 111, 114) | 4.77 (−15.23 … 1.18) | −0.85 | −1.87, −1.87 |
+| automobile (1) | **9 / 20** (100, 104, 106, 109, 110, 113, 114, 115, 116) | 0.72 (0.31 … 2.64) | −0.29 | −0.79, −0.81 |
+| truck (9) | **12 / 20** (100, 101, 104, 106, 108, 109, 110, 111, 113, 114, 118, 119) | 3.03 (−9.59 … 1.52) | 0.16 (gradient_difference s1: 0.24 [0.16, 0.32]) | −1.33, −1.34 |
+
+**Verdicts: all 12 registered predictions held** (C3-A1 … C3-A4 × 3 classes). The required classes were ship and automobile; truck was added once its retrains existed.
+
+**Reading**
+- On every tested class, a zero-step edit passes the retrain-reference removed-label audit, on both closeness and behaviour. The edit re-draws one embedding row and leaves every weight that saw data untouched.
+  - The pass rate is 30 %, 45 % and 60 % of draws on ship, automobile and truck.
+  - Whether a draw passes is luck: removed-label E varies over the draws by an SD of 0.72–4.77.
+- The null-label audit scores every reset exactly 0. This is a design property, not evidence; see "C3-K" in EXPERIMENT_LOG for the non-tautological follow-up.
+- Under the null-label audit, no approximate method at the sweep hyper-parameters is retrain-equivalent.
+- Label annealing moves away from the retrain on all three classes, as predicted from its mechanism: it trains the null label on forget images.
+
+**Exploratory observations (not registered)**
+- *Collapse.* At the sweep hyper-parameters (2000 steps, lr 3e-5), gradient_ascent and variational_ewc destroy the model on every class: removed-label E ≈ −300 to −3000 and null E ≈ −450 to −1900. Their gated rate of 0 is reached by collapse.
+- *Gradient_difference.* It also collapses on the removed label. On the null label it scores between −45.7 and 0.24.
+- *Too little forgetting.* Label_annealing and retain_finetune keep generating the forget class (gated rate 0.89–1.00).
+- So no tested method reaches retrain-like behaviour without collapse. This limits what C3-A can say about the methods; it is not a limit on what it says about the audit.

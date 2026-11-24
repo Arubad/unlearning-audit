@@ -18,11 +18,11 @@ def smoke_config(tmp: str) -> dict:
     return {
         "experiment_id": "SMOKE",
         "model": {"type": "ddpm_unet_small", "n_classes": 10, "base_channels": 32, "channel_mults": [1, 2], "res_blocks": 1, "attention_resolutions": [16], "image_size": 32, "timesteps": 1000, "ema_decay": 0.995, "dropout": 0.1, "cfg_dropout": 0.1},
-        "data": {"root": os.path.join(tmp, "data"), "forget_class": 3, "forget_frac": 0.05, "num_workers": 2},
+        "data": {"root": os.environ.get("CIFAR_ROOT", "data"), "forget_class": 3, "forget_frac": 0.10, "split_seed": 0, "num_workers": 2},
         "train": {"steps": 200, "batch_size": 64, "learning_rate": 2e-4, "grad_clip": 1.0, "amp": True, "ckpt_every": 200},
         "sampling": {"ddim_steps": 10, "guidance": 2.0, "n_eval": 32, "n_relearn_eval": 32},
-        "unlearn": {"method": "gradient_ascent", "forget_frac": 0.05, "retain_available": True, "steps": 30, "learning_rate": 1e-5, "ascent_bound": 1.0, "retain_weight": 1.0, "ewc_weight": 1.0, "batch_size": 32, "seed": 0},
-        "audit": {"attribution": {"projection_dim": 512, "projection_seed": 1234, "hessian_damping": 1e-2, "n_forget": 32, "train_subset": 128, "n_retain_queries": 32, "timesteps": [200, 500]}, "probe": {"n_per_class": 100, "timestep": 200, "C": 1.0}, "relearn": {"forget_subset_fraction": 0.1, "learning_rate": 1e-4, "max_steps": 40, "eval_every": 20, "recovery_target": 0.9, "batch_size": 16}, "spectrum": {"top_k": 5}},
+        "unlearn": {"method": "gradient_ascent", "forget_frac": 0.10, "retain_available": True, "steps": 30, "learning_rate": 1e-5, "ascent_bound": 1.0, "retain_weight": 1.0, "ewc_weight": 1.0, "batch_size": 32, "seed": 0},
+        "audit": {"mia": {"n_examples": 64, "seed": 0, "timesteps": [50, 400], "secmi_t": 200, "feature_timestep": 100, "n_centroid": 200}, "fingerprint": {"n_per_set": 40, "timesteps": [50, 400]}, "attribution": {"projection_dim": 512, "projection_seed": 1234, "hessian_damping": 1e-2, "n_forget": 32, "train_subset": 128, "n_retain_queries": 32, "timesteps": [200, 500]}, "probe": {"n_per_class": 100, "timestep": 200, "C": 1.0}, "relearn": {"forget_subset_fraction": 0.1, "learning_rate": 1e-4, "max_steps": 40, "eval_every": 20, "recovery_target": 0.9, "batch_size": 16}, "spectrum": {"top_k": 5}},
         "logging": {"output_dir": os.path.join(tmp, "results")},
     }
 
@@ -40,17 +40,20 @@ def run_smoke() -> None:
     base = train_ddpm(cfg, retain_only=False, seed=0)
     cfg["base_checkpoint"] = base["checkpoint"]
     train_ddpm(cfg, retain_only=True, seed=0)
-    cfg["oracle_checkpoint"] = os.path.join(os.environ["RESULTS_ROOT"], "checkpoints", "ddpm_cifar10_retain_s0.pt")
+    train_ddpm(cfg, retain_only=True, seed=1)  # second oracle -> seed-to-seed floor
     train_classifier(cfg, epochs=1)
-    for method in ("gradient_ascent", "label_annealing", "do_nothing"):
+    for method in ("oracle", "do_nothing", "gradient_ascent", "label_annealing", "retain_finetune"):
         c = resolve(cfg, {"method": method})
-        c["base_checkpoint"], c["oracle_checkpoint"] = cfg["base_checkpoint"], cfg["oracle_checkpoint"]
+        c["base_checkpoint"] = cfg["base_checkpoint"]
         d = run_dir(c)
         meta = start_entry(c, d, "smoke")
         unlearn_cell(c)
         rec = audit_diffusion_cell(c)
-        finish_entry(meta, {"attr_drop": rec.get("attr_drop"), "relearn_steps_to_90": rec.get("relearn_steps_to_90")})
+        finish_entry(meta, {"E_forget": rec.get("E_forget"), "relearn_steps_to_90": rec.get("relearn_steps_to_90")})
         print(method, json.dumps({k: v for k, v in rec.items() if isinstance(v, (int, float))}, default=float))
+    from .audit.run_audit import truncation_intervention
+
+    truncation_intervention(resolve(cfg, {"method": "gradient_ascent"}) | {"base_checkpoint": cfg["base_checkpoint"]}, [1, 4])
     analyze(os.environ["RESULTS_ROOT"])
     if os.environ.get("LLM_SMOKE") == "1":
         _llm_smoke(tmp)
@@ -75,16 +78,20 @@ def _llm_smoke(tmp: str) -> None:
         "probe": {"feature_layer": -1, "n_examples": 24},
         "relearn": {"forget_subset_fraction": 0.2, "learning_rate": 2e-5, "batch_size": 4, "eval_every": 5, "max_steps": 10, "recovery_target": 0.9},
         "spectrum": {"top_k": 5},
+        "fingerprint": {"n_per_set": 16},
     }
     cfg["eval"] = {"max_new_tokens": 32, "n_eval": 16}
     base = finetune(cfg, retain_only=False, full_ft=False, seed=0)
     oracle = finetune(cfg, retain_only=True, full_ft=False, seed=0)
+    oracle1 = finetune(cfg, retain_only=True, full_ft=False, seed=1)  # second seed -> E noise floor
     from .common.config import resolve
     from .llm.audit import audit_llm_cell
 
     c = resolve(cfg, {})
     c["base_checkpoint"] = base["checkpoint"]
     c["oracle_checkpoint"] = oracle["checkpoint"]
+    c["oracle_checkpoints"] = [oracle["checkpoint"], oracle1["checkpoint"]]
     print("llm unlearn:", unlearn_llm(c))
     rec = audit_llm_cell(c)
-    print("llm audit:", {k: rec.get(k) for k in ("mia_loss_auc", "mia_lira_auc", "attr_drop", "probe_accuracy", "relearn_steps_to_90")})
+    print("llm audit:", {k: rec.get(k) for k in ("mia_loss_auc", "mia_lira_auc", "attr_drop", "probe_accuracy", "relearn_steps_to_90", "E_forget", "E_near", "snr_near")})
+    assert "E_forget" in rec and rec["n_reference_oracles"] == 2, "LLM closeness E missing from the record"

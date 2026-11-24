@@ -32,12 +32,20 @@ def control_assertions(record: Dict) -> Dict:
     """For the do_nothing cell: everything should say 'not forgotten'."""
     checks = {
         "mia_above_chance": np.isnan(record.get("mia_loss_auc", np.nan)) or record.get("mia_loss_auc", 0) > 0.55,
-        "probe_full": record.get("probe_accuracy", 1.0) >= 0.8,
+        # amendment 2026-11-19 (harness fix after run v4): the absolute 0.8 was set before data; the original model's
+        # cat-vs-rest probe is 0.73-0.76 and the oracle's 0.73-0.77, so ">= 0.8" failed for reasons unrelated to
+        # forgetting.  The control only needs the probe to be clearly above chance (balanced classes -> 0.5).
+        "probe_above_chance": record.get("probe_accuracy", 1.0) >= 0.6,
         "no_relearn": record.get("relearn_steps_to_90", 0) == 0,
         "no_attr_drop": abs(record.get("attr_drop", 0.0)) < 0.05,
         "zero_delta": record.get("delta_norm_total", 0.0) < 1e-6,
+        # amendment 2026-11-18: an unmodified checkpoint is exactly as far from the oracle as the original
+        "zero_closeness": all(abs(record.get(k, 0.0)) < 1e-6 or np.isnan(record.get(k, 0.0)) for k in ("E_forget", "E_near", "E_heldout", "E_far")),
     }
-    checks["verdict"] = "passed" if all(v for k, v in checks.items() if k != "verdict") else "FAILED: harness reports forgetting for an unmodified checkpoint"
+    failed = [k for k, v in checks.items() if not v]
+    # P1 (pre-registered prediction): in the generalisation regime the MIA check is expected to fail; name the
+    # failed checks instead of a blanket message so an MIA-only failure is not read as a harness bug
+    checks["verdict"] = "passed" if not failed else "FAILED: " + ", ".join(failed)
     return checks
 
 

@@ -42,7 +42,10 @@ def extract_diffusion_features(model, diff, dataset, indices, timestep: int, dev
             t = torch.full((x.shape[0],), int(timestep), device=device, dtype=torch.long)
             noise = torch.randn_like(x)
             xt = diff.q_sample(x, t, noise)
-            feats.append(model.features(xt, t, y).float().cpu().numpy())
+            # Null-class conditioning (fix 2026-11-18): passing the true label y injected the class embedding into
+            # the features, so the probe decoded the label itself rather than what the network represents.
+            y_null = torch.full_like(y, model.null_class)
+            feats.append(model.features(xt, t, y_null).float().cpu().numpy())
     return np.concatenate(feats)
 
 

@@ -1,0 +1,174 @@
+{
+ "D3_ddpm_unlearn/forget_frac0p1_methoddo_nothing_seed0": {
+  "cat_rate_raw": 0.87,
+  "cat_rate_valid": 0.87,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.018329480662941933,
+  "retain_acc_raw": 0.9733333333333333,
+  "retain_acc_valid": 0.9733333333333333,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.83,
+  "audit_retain_acc": 0.9488888888888889
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methoddo_nothing_seed1": {
+  "cat_rate_raw": 0.834,
+  "cat_rate_valid": 0.834,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.0192808099091053,
+  "retain_acc_raw": 0.9666666666666668,
+  "retain_acc_valid": 0.9666666666666668,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.816,
+  "audit_retain_acc": 0.9555555555555556
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodgradient_ascent_seed0": {
+  "cat_rate_raw": 0.006,
+  "cat_rate_valid": 0.0,
+  "cat_degenerate": 1.0,
+  "cat_hf_median": 0.39706432819366455,
+  "retain_acc_raw": 0.11777777777777779,
+  "retain_acc_valid": 0.0,
+  "retain_degenerate": 1.0,
+  "audit_cat_rate": 0.008,
+  "audit_retain_acc": 0.1111111111111111
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodgradient_ascent_seed1": {
+  "cat_rate_raw": 0.058,
+  "cat_rate_valid": 0.0,
+  "cat_degenerate": 1.0,
+  "cat_hf_median": 0.4622999131679535,
+  "retain_acc_raw": 0.09555555555555556,
+  "retain_acc_valid": 0.0,
+  "retain_degenerate": 1.0,
+  "audit_cat_rate": 0.032,
+  "audit_retain_acc": 0.10666666666666667
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodgradient_difference_seed0": {
+  "cat_rate_raw": 0.654,
+  "cat_rate_valid": 0.0,
+  "cat_degenerate": 1.0,
+  "cat_hf_median": 0.46012082695961,
+  "retain_acc_raw": 0.9400000000000001,
+  "retain_acc_valid": 0.9400000000000001,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.654,
+  "audit_retain_acc": 0.9422222222222222
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodgradient_difference_seed1": {
+  "cat_rate_raw": 0.756,
+  "cat_rate_valid": 0.756,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.005871661007404327,
+  "retain_acc_raw": 0.9466666666666667,
+  "retain_acc_valid": 0.9466666666666667,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.726,
+  "audit_retain_acc": 0.9288888888888889
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodlabel_annealing_seed0": {
+  "cat_rate_raw": 0.842,
+  "cat_rate_valid": 0.842,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.02094290405511856,
+  "retain_acc_raw": 0.9622222222222222,
+  "retain_acc_valid": 0.9622222222222222,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.828,
+  "audit_retain_acc": 0.96
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodlabel_annealing_seed1": {
+  "cat_rate_raw": 0.818,
+  "cat_rate_valid": 0.818,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.027143850922584534,
+  "retain_acc_raw": 0.9777777777777779,
+  "retain_acc_valid": 0.9777777777777779,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.78,
+  "audit_retain_acc": 0.9711111111111111
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodoracle_seed0": {
+  "cat_rate_raw": 0.006,
+  "cat_rate_valid": 0.006,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.005876539275050163,
+  "retain_acc_raw": 0.9622222222222222,
+  "retain_acc_valid": 0.9622222222222222,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.014,
+  "audit_retain_acc": 0.96
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodoracle_seed1": {
+  "cat_rate_raw": 0.058,
+  "cat_rate_valid": 0.058,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.009535644203424454,
+  "retain_acc_raw": 0.9666666666666666,
+  "retain_acc_valid": 0.9666666666666666,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.1,
+  "audit_retain_acc": 0.9511111111111111
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodretain_finetune_seed0": {
+  "cat_rate_raw": 0.922,
+  "cat_rate_valid": 0.922,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.019910629838705063,
+  "retain_acc_raw": 0.9644444444444444,
+  "retain_acc_valid": 0.9644444444444444,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.916,
+  "audit_retain_acc": 0.9444444444444444
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodretain_finetune_seed1": {
+  "cat_rate_raw": 0.906,
+  "cat_rate_valid": 0.906,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.02871716022491455,
+  "retain_acc_raw": 0.9600000000000001,
+  "retain_acc_valid": 0.9600000000000001,
+  "retain_degenerate": 0.0,
+  "audit_cat_rate": 0.868,
+  "audit_retain_acc": 0.96
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodvariational_ewc_seed0": {
+  "cat_rate_raw": 0.0,
+  "cat_rate_valid": 0.0,
+  "cat_degenerate": 1.0,
+  "cat_hf_median": 0.5292015075683594,
+  "retain_acc_raw": 0.10888888888888888,
+  "retain_acc_valid": 0.0,
+  "retain_degenerate": 1.0,
+  "audit_cat_rate": 0.002,
+  "audit_retain_acc": 0.10444444444444445
+ },
+ "D3_ddpm_unlearn/forget_frac0p1_methodvariational_ewc_seed1": {
+  "cat_rate_raw": 0.002,
+  "cat_rate_valid": 0.0,
+  "cat_degenerate": 1.0,
+  "cat_hf_median": 0.509501576423645,
+  "retain_acc_raw": 0.10888888888888888,
+  "retain_acc_valid": 0.0,
+  "retain_degenerate": 1.0,
+  "audit_cat_rate": 0.006,
+  "audit_retain_acc": 0.11555555555555555
+ },
+ "local/embedding_reset_seed0": {
+  "cat_rate_raw": 0.12,
+  "cat_rate_valid": 0.12,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.014283966273069382,
+  "retain_acc_raw": 0.9733333333333333,
+  "retain_acc_valid": 0.9733333333333333,
+  "retain_degenerate": 0.0
+ },
+ "local/embedding_reset_seed1": {
+  "cat_rate_raw": 0.116,
+  "cat_rate_valid": 0.116,
+  "cat_degenerate": 0.0,
+  "cat_hf_median": 0.010323276743292809,
+  "retain_acc_raw": 0.9666666666666668,
+  "retain_acc_valid": 0.9666666666666668,
+  "retain_degenerate": 0.0
+ }
+}

@@ -4,8 +4,7 @@ gradient_ascent     ascent on forget NLL (bounded)
 gradient_difference ascent on forget + descent on retain
 npo                 Negative Preference Optimization (Zhang et al. 2024):
                     L = (2/beta) * E_forget[ log sigmoid( beta * (logp_ref - logp_theta) ) ] + retain NLL
-                    (the reference is the pre-unlearning model with adapters disabled, or a frozen copy
-                    for the full-FT arm)
+                    (the reference is a frozen copy of the pre-unlearning fine-tuned model, LoRA or full-FT)
 oracle              load the retain-only retrain
 do_nothing          the base checkpoint (control)
 """
@@ -25,7 +24,7 @@ import torch.nn.functional as F
 from ..common.config import run_dir
 from ..common.kaggle_env import resolve_dtype, torch_device
 from ..common.seed import derive_seed, seed_everything
-from .data import build_examples, collate, forget_retain_configs, load_tofu
+from .data import build_examples, collate, forget_retain_configs, load_tofu, heldout_split
 from .finetune import adapter_dir, load_base, make_optimizer
 
 METHODS = ("gradient_ascent", "gradient_difference", "npo", "oracle", "do_nothing")
@@ -69,11 +68,23 @@ def unlearn_llm(cfg: Dict) -> Dict:
         model.to(device)
         ref = copy.deepcopy(model).eval() if method == "npo" else None
     else:
-        ref = None  # NPO reference = adapters disabled
+        # NPO reference = the fine-tuned base (pre-unlearning) model, a frozen copy of base model + base adapter.
+        # Fix 2026-11-18: the reference used to be ``model.disable_adapter()``, i.e. the raw pretrained Qwen that
+        # never saw TOFU, which made NPO's log-ratio meaningless and NPO behave like bounded gradient ascent.
+        ref = None
+        if method == "npo":
+            _, ref = load_base(cfg, device, dtype, False, adapter=base_ckpt)
+            ref.eval()
+            for p_ in ref.parameters():
+                p_.requires_grad_(False)
 
     forget_cfg, retain_cfg = forget_retain_configs(forget_frac)
     fex = build_examples(tok, load_tofu(forget_cfg), int(cfg["model"].get("max_length", 512)))
-    rex = build_examples(tok, load_tofu(retain_cfg), int(cfg["model"].get("max_length", 512)))
+    # retain term trains only on the retain *training* slice: the held-out slice must stay unseen by every model,
+    # it is the MIA non-member set (leak fixed 2026-11-19)
+    retain_ds = load_tofu(retain_cfg)
+    retain_ds = retain_ds.select(heldout_split(len(retain_ds), float(cfg.get("data", {}).get("heldout_frac", 0.05)))["train"])
+    rex = build_examples(tok, retain_ds, int(cfg["model"].get("max_length", 512)))
     rng = np.random.default_rng(derive_seed(seed, "batches"))
     bs = int(u.get("batch_size", 8))
     params = [p for p in model.parameters() if p.requires_grad]
@@ -95,11 +106,7 @@ def unlearn_llm(cfg: Dict) -> Dict:
         elif method == "npo":
             lp = _seq_logp(model, fb)
             with torch.no_grad():
-                if full_ft:
-                    lp_ref = _seq_logp(ref, fb)
-                else:
-                    with model.disable_adapter():
-                        lp_ref = _seq_logp(model, fb)
+                lp_ref = _seq_logp(ref, fb)
             # NPO (Zhang et al. 2024): minimise -(2/beta) E_forget[ log sigmoid( -beta (logp_theta - logp_ref) ) ]
             loss = -(2.0 / beta) * F.logsigmoid(-beta * (lp - lp_ref)).mean()
         if retain_available and method in ("gradient_difference", "npo"):

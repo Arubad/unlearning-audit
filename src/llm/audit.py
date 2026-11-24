@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from ..audit.attribution import attribution_llm
+from ..audit.fingerprint import fingerprint_suite_llm, llm_query_indices
 from ..audit.mia import mia_suite_llm
 from ..audit.probe import probe_accuracy_np
 from ..audit.relearn import steps_to_fraction
@@ -49,7 +50,7 @@ def _forget_retain_heldout_utility(cfg, tok, seed):
     forget_cfg, retain_cfg = forget_retain_configs(frac)
     ml = int(cfg["model"].get("max_length", 512))
     retain_ds = load_tofu(retain_cfg)
-    split = heldout_split(len(retain_ds), float(cfg.get("data", {}).get("heldout_frac", 0.05)), derive_seed(seed, "heldout"))
+    split = heldout_split(len(retain_ds), float(cfg.get("data", {}).get("heldout_frac", 0.05)))  # fixed split, see data.heldout_split
     forget_ex = build_examples(tok, load_tofu(forget_cfg), ml)
     retain_train = build_examples(tok, retain_ds.select(split["train"]), ml)
     heldout_ex = build_examples(tok, retain_ds.select(split["heldout"]), ml)
@@ -123,11 +124,25 @@ def audit_llm_cell(cfg: Dict) -> Dict:
     pre = evaluate_llm(base, tok, forget_ex, retain_ex, utility_ex, device, cfg)
     forgetting["pre_unlearn_forget_rouge_l"] = pre["forget_rouge_l"]
 
-    oracle = None
-    if oracle_ckpt and (os.path.exists(os.path.join(oracle_ckpt, "model.pt")) or os.path.exists(os.path.join(oracle_ckpt, "adapter_config.json"))):
-        _, oracle = _load(cfg, oracle_ckpt, full_ft, device, dtype)
+    # reference oracles: ``oracle_checkpoints`` (list, >= 2 gives the seed-to-seed noise floor for E) or the legacy
+    # single ``oracle_checkpoint``.  oracles[0] stays the reference for attribution and relearning.
+    def _exists(c):
+        return bool(c) and (os.path.exists(os.path.join(c, "model.pt")) or os.path.exists(os.path.join(c, "adapter_config.json")))
 
-    mia = mia_suite_llm(unlearned, tok, forget_ex, heldout_ex, retain_ex, [oracle] if oracle else [], device, cfg)
+    oracle_list = list(cfg.get("oracle_checkpoints") or ([oracle_ckpt] if oracle_ckpt else []))
+    oracles = [_load(cfg, c, full_ft, device, dtype)[1] for c in oracle_list if _exists(c)]
+    oracle = oracles[0] if oracles else None
+
+    mia = mia_suite_llm(unlearned, tok, forget_ex, heldout_ex, retain_ex, oracles, device, cfg)
+
+    # oracle-normalised closeness E (H2 as amended 2026-11-18, ported to answer-token NLL 2026-11-19)
+    from ..audit.mia import llm_answer_nll
+
+    fpc = cfg["audit"].get("fingerprint", {})
+    pools = {"forget": forget_ex, "heldout": heldout_ex, "near": retain_ex, "far": utility_ex}
+    qidx = llm_query_indices({k: len(v) for k, v in pools.items()}, int(fpc.get("n_per_set", 200)), seed=12345)  # fixed across cells
+    qex = {k: [pools[k][i] for i in idx] for k, idx in qidx.items()}
+    fp = fingerprint_suite_llm({"original": base, "after": unlearned}, oracles, qex, lambda m, ex: llm_answer_nll(m, tok, ex, device), seed)
     attribution = attribution_llm(base, unlearned, oracle, tok, forget_ex, retain_ex, cfg, device, seed)
 
     # probe: forget (1) vs retain (0) features from the unlearned model
@@ -164,6 +179,8 @@ def audit_llm_cell(cfg: Dict) -> Dict:
     cell.update({"track": "llm", "full_ft": full_ft})
     record = assemble_record(cell, forgetting, mia, attribution, relearn, probe, spectrum, oracle_relearn_steps)
     record["lora"] = bool(spectrum.get("lora", not full_ft))
+    record.update(fp)
+    record["n_reference_oracles"] = len(oracles)
     save_record(record, out_dir)
     print(json.dumps({k: v for k, v in record.items() if isinstance(v, (int, float, str, bool))}, indent=2, default=float))
     return record

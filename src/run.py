@@ -12,6 +12,8 @@ LLM track:
   python -m src.run llm_oracle       --config configs/llm_base.yaml --cell forget_frac=0.05,seed=0
   python -m src.run llm_sweep        --config configs/llm_unlearn_sweep.yaml [--minimum]
 
+  python -m src.run truncate         --config configs/diffusion_unlearn_sweep.yaml --cell method=gradient_ascent,forget_frac=0.1,seed=0 [--ranks 1,4,16,64]
+
   python -m src.run analyze [--results results]
   python -m src.run smoke
 """
@@ -51,25 +53,50 @@ def cmd_train_oracle(args):
 
 
 def cmd_sweep(args):
+    """For each cell: unlearn -> audit.  Oracle cells run first (per forget fraction and seed) so their relearning
+    time is available as the denominator of every other cell's relearn ratio (fix 2026-11-18: oracle cells used to
+    skip the audit, so ``relearn_ratio_to_oracle`` was never set and H1 could not be confirmed)."""
+    import json as _json
+
     from .audit.run_audit import audit_diffusion_cell
     from .diffusion.unlearn import unlearn_cell
 
     base = load_yaml(args.config)
-    for cell in iter_cells(base, minimum=args.minimum):
+    cells = list(iter_cells(base, minimum=args.minimum))
+    cells.sort(key=lambda c: (c.get("method") != "oracle", c.get("method") != "do_nothing"))
+    oracle_steps = {}
+    for cell in cells:
         cfg = resolve(base, cell)
         cfg["logging"]["output_dir"] = results_root(cfg.get("logging", {}).get("output_dir", "results"))
         d = run_dir(cfg)
-        if args.skip_existing and os.path.exists(os.path.join(d, "audit_record.json")):
+        key = (float(cfg["unlearn"]["forget_frac"]), int(cfg["unlearn"]["seed"]))
+        rec_path = os.path.join(d, "audit_record.json")
+        if args.skip_existing and os.path.exists(rec_path):
             print("skip", cell)
+            if cell.get("method") == "oracle":
+                with open(rec_path) as f:
+                    oracle_steps[key] = _json.load(f).get("relearn_steps_to_90")
             continue
-        print(f"\n===== {cell_name(cell)}  {config_hash(cfg)} =====")
+        from .common.deadline import check
+
+        check(float(os.environ.get("UA_CELL_MARGIN_S", 4500)), f"cell {cell_name(cell)}")
+        print(f"\n===== {cell_name(cell)}  {config_hash(cfg)} =====", flush=True)
         meta = start_entry(cfg, d, "unlearn + audit")
         m = unlearn_cell(cfg)
-        if cfg["unlearn"]["method"] != "oracle":
-            rec = audit_diffusion_cell(cfg)
-            m["attr_drop"] = rec.get("attr_drop")
-            m["relearn_steps_to_90"] = rec.get("relearn_steps_to_90")
+        rec = audit_diffusion_cell(cfg, oracle_relearn_steps=None if cell.get("method") == "oracle" else oracle_steps.get(key))
+        if cell.get("method") == "oracle":
+            oracle_steps[key] = rec.get("relearn_steps_to_90")
+        for k in ("forget_class_rate_conditional", "mia_loss_auc", "E_forget", "E_near", "probe_accuracy", "relearn_steps_to_90", "top5_energy_wmean", "relearn_alignment"):
+            m[k] = rec.get(k)
         finish_entry(meta, m)
+
+
+def cmd_truncate(args):
+    from .audit.run_audit import truncation_intervention
+
+    cfg = _prep(args)
+    ks = [int(k) for k in args.ranks.split(",")]
+    print(truncation_intervention(cfg, ks))
 
 
 def cmd_llm_finetune(args):
@@ -139,6 +166,7 @@ def main(argv=None):
         s.set_defaults(fn=fn)
     for name, fn in (("sweep", cmd_sweep), ("llm_sweep", cmd_llm_sweep)):
         s = sub.add_parser(name); s.add_argument("--config", required=True); s.add_argument("--minimum", action="store_true"); s.add_argument("--skip-existing", action="store_true"); s.set_defaults(fn=fn)
+    s = sub.add_parser("truncate"); s.add_argument("--config", required=True); s.add_argument("--cell", default=""); s.add_argument("--ranks", default="1,4,16,64"); s.set_defaults(fn=cmd_truncate)
     s = sub.add_parser("analyze"); s.add_argument("--results", default=None); s.set_defaults(fn=cmd_analyze)
     s = sub.add_parser("smoke"); s.set_defaults(fn=cmd_smoke)
     args = p.parse_args(argv)

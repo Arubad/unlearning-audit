@@ -89,9 +89,9 @@ def finetune(cfg: Dict, retain_only: bool = False, full_ft: bool = False, seed: 
     # as MIA non-members (TOFU examples the models never saw).  Indices are recorded once.
     heldout_frac = float(cfg.get("data", {}).get("heldout_frac", 0.05))
     retain_ds = load_tofu(retain_cfg)
-    split = heldout_split(len(retain_ds), heldout_frac, derive_seed(seed, "heldout"))
+    split = heldout_split(len(retain_ds), heldout_frac)  # fixed across seeds (see data.heldout_split)
     heldout_questions = {retain_ds[i]["question"] for i in split["heldout"]}
-    hid_path = os.path.join(results_root(), "llm_checkpoints", f"heldout_indices_f{forget_frac}_s{seed}.json")
+    hid_path = os.path.join(results_root(), "llm_checkpoints", f"heldout_indices_f{forget_frac}.json")
     os.makedirs(os.path.dirname(hid_path), exist_ok=True)
     with open(hid_path, "w") as f:
         json.dump({"retain_config": retain_cfg, "heldout_frac": heldout_frac, **split}, f)

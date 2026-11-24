@@ -22,6 +22,10 @@ venv/
 *.npz
 results/**
 !results/.gitkeep
+# small analysis outputs the paper cites (JSON summaries, figures); checkpoints stay ignored
+!results/figures/
+!results/figures/*.json
+!results/figures/*.png
 checkpoints/
 adapters/
 hf_cache/
