@@ -403,7 +403,87 @@ def test_score_c3a_rules():
     assert score_c3a({"oracle_behaviour": ob, "models": {k: x for k, x in M.items() if "_method" not in k}})["C3-A3"] == "untestable"
 
 
+
+def test_c4_row_swap_and_rules():
+    from src.analysis.c4_controls import row_swap_stats, score_c4r, score_c4x
+    rng = np.random.default_rng(0)
+    T = [10, 50, 100, 200, 300, 400, 500]
+    net = {n: rng.normal(0, 0.01, (64, len(T))) for n in range(3)}
+    row = {r: rng.normal(0, 1.0, (64, len(T))) for r in range(3)}  # the row dominates the response
+    L = {(n, r): net[n] + row[r] for n in range(3) for r in range(3)}
+    st = row_swap_stats(L, T)
+    assert st["row_wins_low_t"] == 6
+    assert st["H_common"] < st["H_indep"] or st["H_indep"] >= 1.0
+    st["loo_common"] = [1.0, 0.9, 1.1, float("nan"), 1.3, 0.7, 2.0, 1.0, 1.0]
+    v = score_c4r({"class1": st, "class3": st, "class8": st, "class9": st})
+    assert v["R1_overall"] == "held" and v["R3"]["class1"] == "held" and v["R3_overall"] == "held"
+    flip = {(n, r): row[n] + net[r] for n in range(3) for r in range(3)}  # the network dominates
+    st2 = row_swap_stats(flip, T)
+    assert st2["row_wins_low_t"] == 0
+    st2["loo_common"] = [float("nan")] * 9
+    v2 = score_c4r({"a": st2, "b": st2, "c": st2, "d": st2})
+    assert v2["R1_overall"] == "failed" and v2["R3_overall"] == "untestable"
+    assert score_c4x({"c": [0.1, -0.2, 0.49]})["X1"] == "held"
+    assert score_c4x({"c": [0.1, 0.6]})["X1"] == "failed"
+    assert score_c4x({"c": [0.1, float("nan")]})["X1"] == "failed"
+
+
+def test_c4_frechet_and_rules():
+    from src.analysis.c4_fd import frechet, score_c4f
+    rng = np.random.default_rng(1)
+    f = rng.normal(size=(500, 8)); g = rng.normal(loc=1.0, size=(500, 8))
+    mu, S = f.mean(0), np.cov(f, rowvar=False)
+    assert abs(frechet(mu, S, mu, S)) < 1e-6
+    assert abs(frechet(f.mean(0), np.cov(f, rowvar=False), g.mean(0), np.cov(g, rowvar=False)) - 8.0) < 1.5
+    d = {"retrain_pairs_k": [10, 20, 30], "retrain_pairs_0": [5, 5, 6], "orig_vs_retrain": [50, 60, 70],
+         "redraw_vs_retrain": [25] * 20 + [40] * 40}
+    v = score_c4f({"a": d, "b": d, "c": dict(d, redraw_vs_retrain=[40] * 60)})
+    assert v["F1"]["a"] == "held" and abs(v["F1_fraction"]["a"] - 1 / 3) < 1e-9 and v["F1"]["c"] == "failed"
+    assert v["F1_overall"] == "held" and v["F2_overall"] == "held" and v["F3_overall"] == "held"
+    assert score_c4f({"a": dict(d, orig_vs_retrain=[25, 60, 70])})["F3_overall"] == "failed"
+
+
+def test_c5_fido_pooling_seeds_and_rules():
+    from src.analysis.c4_fd import frechet
+    from src.analysis.c5_fido import fid_o, pooled_stats, score_c5, seed_for
+    rng = np.random.default_rng(2)
+    # pooling = Gaussian fit to the concatenation
+    a, b = rng.normal(size=(300, 4)), rng.normal(loc=2.0, size=(200, 4))
+    mu, S = pooled_stats([a, b])
+    cat = np.concatenate([a, b])
+    assert np.allclose(mu, cat.mean(0)) and np.allclose(S, np.cov(cat, rowvar=False))
+    # identical per-label features -> FID_O 0; a shift in one label of ten moves the pooled FD less than the label alone
+    A = {l: rng.normal(loc=l, size=(400, 3)) for l in range(10)}
+    assert abs(fid_o(A, A)) < 1e-6
+    B = dict(A); B[3] = A[3] + 3.0
+    full = fid_o(A, B); single = frechet(*pooled_stats([A[3]]), *pooled_stats([B[3]]))
+    assert 0 < full < single
+    assert abs(fid_o(A, B, [l for l in range(10) if l != 3])) < 1e-6  # retained-only ignores label 3
+    # registered seeds are distinct across all (kind, class, seed, label) used
+    seeds = [seed_for("origA", l) for l in range(10)] + [seed_for("origB", l) for l in range(10)]
+    seeds += [seed_for("retrain", l, k=k, s=s) for k in (8, 1, 9) for s in (0, 1, 2) for l in range(10)]
+    seeds += [seed_for("redraw", k, k=k, r=r) for k in (8, 1, 9) for r in range(100, 120)]
+    assert len(seeds) == len(set(seeds))
+    # rules
+    d = {"retrain_pairs": [2.0, 3.0, 4.0], "same_model_floor": 1.0, "orig_vs_retrain": [5.0, 6.0, 7.0],
+         "redraw_vs_retrain": [3.5] * 20 + [9.0] * 40, "retrain_pairs_retained": [1.0, 1.5, 2.0]}
+    v = score_c5({"a": d, "b": d, "c": dict(d, redraw_vs_retrain=[9.0] * 60, same_model_floor=2.5)})
+    assert v["O1"]["a"] == "held" and abs(v["O1_fraction"]["a"] - 1 / 3) < 1e-9 and v["O1"]["c"] == "failed"
+    assert v["O1_overall"] == "held" and v["O2"]["c"] == "failed" and v["O2_overall"] == "held"
+    assert v["O3_overall"] == "held" and v["O4_overall"] == "held"
+    assert score_c5({"a": dict(d, orig_vs_retrain=[3.9, 6.0, 7.0])})["O3_overall"] == "failed"
+    assert score_c5({"a": dict(d, retrain_pairs_retained=[2.5, 2.5, 2.5])})["O4_overall"] == "failed"
+
+
 if __name__ == "__main__":  # noqa
+    # Must stay the last statement in the file: tests defined below it would never run.
+    # Guard: every top-level `def test_` in the source must have been executed.
+    import re
+    ran = []
     for name, fn in list(globals().items()):
-        if name.startswith("test_") and callable(fn):
-            fn(); print("ok", name)
+        if name.startswith("test_") and callable(fn) and getattr(fn, "__module__", None) == "__main__":
+            fn(); print("ok", name); ran.append(name)
+    defined = re.findall(r"^def (test_\w+)", open(__file__).read(), flags=re.M)
+    missing = sorted(set(defined) - set(ran))
+    assert not missing and len(ran) == len(defined), f"tests defined but not run: {missing}"
+    print(f"all {len(ran)} tests passed")

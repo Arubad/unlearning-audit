@@ -69,7 +69,7 @@ A negative-results section with each hypothesis marked confirmed / refuted / und
 
 ## 8. Amendments
 
-Format: `YYYY-MM-DD — what changed — why — git commit`. All amendments below were made **before any experiment was run** (Week 0), following an independent review recorded in [`REVIEW.md`](REVIEW.md).
+Format: `YYYY-MM-DD — what changed — why — git commit`. All amendments below were made **before any experiment was run** (Week 0), following an independent review recorded in [`REVIEW.md`](docs/history/REVIEW_2026-10-18.md).
 
 - 2026-10-18 — **H3 restricted to full-parameter tracks and made a partial correlation.** Old: Spearman(effective rank, relearning steps) ≥ 0.7 across all method × seed cells. New: the test runs only on the DDPM (full UNet weights) and on a new full-fine-tune LLM arm (Qwen2.5-0.5B, 8-bit Adam); the correlation is the partial Spearman correlation of effective rank with relearning steps controlling for ‖Δθ‖_F, same ≥ 0.7 / < 0.3 thresholds. — Why: under LoRA rank 16, every Δθ (including the oracle's) has rank ≤ 16 per layer by construction, so the spectrum comparison is meaningless there; and a smaller update relearns faster regardless of rank (From Dormant to Deleted, arXiv 2505.22310; FRAG, arXiv 2608.25429), so norm is a confound. — commit: this one.
 - 2026-10-18 — **Added independent variable: LLM parameterisation** {LoRA r16; full fine-tune with 8-bit Adam}, and **dependent variable: update norm ‖Δθ‖_F** (per layer and total). — Why: needed for the new H3. — commit: this one.
@@ -335,7 +335,7 @@ Truck (class 9), retrains s0–s2, code `827e2688a52f`, `label_diag.score_c3b`.
 
 | Prediction | Observed | Verdict |
 |---|---|---|
-| Sanity: forget row untrained | rows moved 3.19e-6, 3.09e-6, 1.82e-6 (relative) | held |
+| Sanity: forget row untrained | rows moved 3.19e-6, 3.09e-6, 1.82e-6 (absolute; *[label corrected 2026-11-25: was "(relative)"]*) | held |
 | C2-0 null-label power | null plain SNR 2.44 on forget-train (std 1.88) | held |
 | C2-A null-label LOO calibration | plain E 1.08 [1.03, 1.13], 0.97 [0.92, 1.02], 0.96 [0.91, 1.01] | held |
 | C3-B-B homogeneity (revised rule) | null pair ratios at t = 10…400: 1.49, 1.19, 1.15, 1.16, 1.09, 1.18. Max 1.49 against the 1.5 bound; every value is below the forget-label ratio at the same t (6.56, 5.43, 3.71, 2.40, 2.98, 2.36) | held (thin margin at t = 10) |
@@ -383,3 +383,197 @@ Output: `results/figures/c3a_consequence.json`. Unlearning cells are in `results
 - *Gradient_difference.* It also collapses on the removed label. On the null label it scores between −45.7 and 0.24.
 - *Too little forgetting.* Label_annealing and retain_finetune keep generating the forget class (gated rate 0.89–1.00).
 - So no tested method reaches retrain-like behaviour without collapse. This limits what C3-A can say about the methods; it is not a limit on what it says about the audit.
+
+### C3-A: corrections to the outcome wording (2026-11-24, after an independent review; verdicts unchanged)
+- "leaves every weight that saw data untouched" is wrong. The re-draw *overwrites* the original's trained row k with a random one; every *other* weight is untouched.
+- "Whether a draw passes is luck" overstates it. The same 20 torch seeds give the same vectors for every class, and outcomes correlate (ship–truck Spearman ρ = 0.52). Passing is partly a property of the vector.
+- Post-hoc analysis (not registered), computed from the existing JSON: under the C3-A pass rule with leave-one-out references, held-out *exact retrains* pass in 3/9 rotations (automobile 0/3, ship 1/3, truck 2/3), against 27/60 for re-draws.
+- The removed-label statistic differs by class (std for ship and truck, plain for automobile, as amended before data). The SDs in A2 therefore are not comparable across classes.
+
+
+---
+
+## Study C4: mechanism, specificity and a published-metric analogue (registered 2026-11-24 12:53 IST, before any C4 data)
+
+**Why.** An independent review of the workshop paper (journal §7.17) ranked these open weaknesses:
+- (W7) the untrained row is not shown *causally* to cause the removed-label heterogeneity;
+- (W2) the null-label audit is not shown to track *removal of class k* rather than "being an independently trained network";
+- (W1) no published audit is shown to be affected.
+
+Since then we found one that is. FID_O (Zheng, Tai & Yeh, CVPR 2026, arXiv:2603.22870) is "the FID between the generated images from the unlearned model and those from the oracle model *for all the classes*", against a single retrain, on CIFAR-10 class-conditional DDPMs. It includes the forgotten label.
+
+**Scope.**
+- Laptop only (Apple M4/MPS); forward passes and sampling from existing checkpoints; no training; no Kaggle.
+- Every model uses EMA weights, as in all earlier studies.
+- Before registration, a timing probe sampled 256 images from the original under label 0 and extracted Inception features. Nothing from it was saved or scored.
+
+### C4-R: row-swap design (mechanism)
+**Design.**
+- For each class k ∈ {1, 3, 8, 9}, build a 3×3 grid of models M[n, r]: network n ∈ {retrain s0, s1, s2}, with its EMA row k replaced by retrain r's EMA row k. The diagonal is the real retrains.
+- Losses: the label_diag pipeline unchanged (`forget_train` queries, 256 images, same noise, label k, all 12 timesteps). d(·,·) is the per-timestep RMS over images.
+- Let T≤ = {10, 50, 100, 200, 300, 400}.
+
+**Rules.**
+- **R1 (the row dominates).**
+  - Row effect: D_row(t) = mean over n, and over pairs r ≠ r', of d(M[n,r], M[n,r']).
+  - Network effect: D_net(t) = mean over r, and over pairs n ≠ n', of d(M[n,r], M[n',r]).
+  - Held for a class if D_row(t) > D_net(t) at ≥ 4 of the 6 t ∈ T≤.
+  - **Held overall if held on ≥ 3 of 4 classes.**
+- **R2 (a common row restores homogeneity).**
+  - For a fixed row r: H_r = max over t ∈ T≤ of [max/min over the 3 network pairs of d(M[n,r], M[n',r])].
+  - H_common = median over r of H_r. H_indep = the same statistic on the diagonal (the real retrains).
+  - Held for a class if H_common ≤ 0.5 · H_indep.
+  - **Held overall if held on ≥ 3 of 4 classes.**
+- **R3 (a common row restores calibration).**
+  - For each r, compute the leave-one-out plain E (audit timesteps {50, 200, 400, 600, 800}, closeness_np unchanged, original as θ0) of each held-out network against the other two, all carrying row r. This gives 9 rotations per class.
+  - Held for a class if ≥ 2/3 of its *defined* rotations lie in [0.6, 1.4]. Classes with < 3 defined rotations are untestable.
+  - **Held overall if held on every testable class, with ≥ 2 testable.**
+
+**Registered interpretation.**
+- R1 and R2 held: the independent random draw of the untrained row is the main cause of the removed-label heterogeneity.
+- R1 or R2 failed: the heterogeneity comes mainly from network-specific responses to an *untrained input*. The paper's mechanism text must then say "untrained" rather than "independently drawn", whatever happens to calibration.
+
+### C4-X: cross-class retrains (specificity of the null-label audit)
+**Design.**
+- For k ∈ {1, 8, 9}, the classes with null-label power, take the 9 retrains that removed a *different* class j ∈ {1, 3, 8, 9} \ {k} (3 seeds each). Each is an independently trained network that kept class k.
+- Compute each one's null-label plain E against the three class-k retrains, with the original as θ0, using the label_diag queries and noise for class k.
+
+**Rule.**
+- **X1: held if all 27 point estimates are < 0.5.**
+- Also reported separately: same-seed pairs (retrain(−j, s) vs retrain(−k, s) share an initialisation) vs different-seed pairs.
+
+**Interpretation.** If X1 fails, null-label E partly measures "independent network" rather than "class k removed", and the paper must say so.
+
+### C4-F: removed-label Fréchet distance (analogue of FID_O restricted to the forgotten label)
+**Design.**
+- Classes k ∈ {8, 1, 9}. Models:
+  - the original;
+  - the three retrains;
+  - the 20 C3-A re-draws (seeds 100–119, constructed exactly as in C3-A).
+- Samples: 1,000 per model under label k (C3-A sampler: 50 DDIM steps, guidance 2.0). The sampler seed is independent per model: 50000 + 1000·k + index, with the index in the order above.
+- Features: pytorch-fid InceptionV3, 768-d block (full-rank covariance at n = 1,000). Images are mapped from [−1, 1] to [0, 1].
+- FD is the Fréchet distance between Gaussian fits.
+- Retained-label contrast: the original and the 3 retrains also sample 1,000 images under label 0 (airplane, retained in every retrain).
+
+**Rules.**
+- **F1 (single-retrain FD cannot separate re-draws from retrains).** Per class: of the 60 (re-draw, retrain) FDs, the fraction ≤ the largest of the 3 retrain–retrain FDs is ≥ 0.25. **Held overall if held on ≥ 2 of 3 classes.**
+- **F2 (retrains disagree more under the removed label).** Per class: the mean retrain-pair FD under label k is > 1.5 × that under label 0. **Held overall if held on ≥ 2 of 3 classes.**
+- **F3 (sanity).** Per class: the minimum original–retrain FD under label k is > the maximum retrain–retrain FD. **Held overall if held on every class.**
+- Exploratory, not registered: the relationship between a re-draw's FD and its C3-A pass/fail.
+
+**Code.**
+- `src/analysis/c4_controls.py` (C4-R, C4-X) and `src/analysis/c4_fd.py` (C4-F).
+- Written after this registration, and smoke-tested on tiny settings, whose outputs are discarded.
+- The scoring functions get unit tests on hand-built inputs before any C4 data are scored.
+
+### C4-R and C4-X outcome (scored 2026-11-24 13:05 IST with the registered code, unchanged; `results/figures/c4_controls.json`)
+| class | row wins (of 6 t ≤ 400) | R1 | H_indep → H_common | R2 | defined common-row LOO E (in [0.6, 1.4]) | R3 |
+|---|---|---|---|---|---|---|
+| automobile | 2 | failed | 16.1 → 9.3 | failed | 3 of 9 (0) | failed |
+| cat | 6 | held | 4.45 → 3.98 | failed | 3 of 9 (0) | failed |
+| ship | 4 | held | 3.23 → 4.42 | failed | 5 of 9 (2) | failed |
+| truck | 3 | failed | 6.56 → 8.49 | failed | 5 of 9 (3) | failed |
+
+- **R1 failed (2/4), R2 failed (0/4), R3 failed.** D_row/D_net at t ≤ 400 lies between 0.69 and 1.71: changing the row and changing the network move removed-label losses by comparable amounts. A common row does not restore homogeneity or calibration.
+- **Registered interpretation applies.** The heterogeneity comes mainly from network-specific responses to an *untrained input*, not from the independent draw itself. The paper must say "untrained" rather than "independently drawn". Corollary: sharing the row's initialisation across retrain seeds would *not* repair the removed-label reference. The draft listed that as an untested alternative.
+- **X1 held.** All 27 cross-class retrains score null-label E < 0.5 (range −0.41 to 0.19; max 0.10 / 0.12 / 0.19 for automobile / ship / truck). Independently trained networks that kept class k are scored as "not removed". The null-label audit tracks removal of class k, not network identity.
+
+### C4-F outcome (scored 2026-11-25 12:48 IST with the registered code; `results/figures/c4_fd.json`)
+The scoring function `score_c4f` and all FD computations are unchanged from registration. Run-time changes (memory release; Inception featurisation chunk 250 → 50, verified to give identical features) are in EXPERIMENT_LOG.md.
+
+| class | retrain-pair FD, label k | retrain-pair FD, label 0 | ratio | F2 | original–retrain FD | F3 | re-draw–retrain FD, median [range] | fraction ≤ max pair | F1 |
+|---|---|---|---|---|---|---|---|---|---|
+| ship (8) | 0.50, 0.92, 1.63 | 0.13, 0.13, 0.11 | 8.3 | held | 0.96, 1.12, 1.87 | failed | 1.23 [0.33, 2.71] | 0.73 | held |
+| automobile (1) | 2.28, 2.07, 1.00 | 0.11, 0.11, 0.11 | 16.3 | held | 1.31, 2.23, 1.67 | failed | 1.62 [0.51, 2.74] | 0.85 | held |
+| truck (9) | 0.80, 0.63, 1.00 | 0.15, 0.17, 0.12 | 5.5 | held | 1.24, 0.91, 1.34 | failed | 1.14 [0.25, 2.18] | 0.28 | held |
+
+- **F1 held (3/3).** Under the removed label, a single-retrain FD puts 28–85 % of zero-step re-draws within the spread of retrain pairs.
+- **F2 held (3/3).** Retrains disagree 5.5–16× more under the removed label than under airplane, which every retrain trained.
+- **F3 failed (0/3).** F3 was the registered sanity check. On every class, the unmodified original is closer to at least one retrain than the farthest pair of retrains is to each other.
+  - The instrument is precise: under airplane, all model pairs (original included) are at 0.11–0.18.
+  - So the failure means that the removed-label reference spread is as large as the effect of doing nothing. It does not mean that the FD is too noisy to measure.
+  - It is a stronger negative for the removed-label FD than F1 alone. F3 was meant to show that the metric has *some* power; it does not reliably separate doing nothing from retraining when compared against one retrain.
+- **Caveats (registered design choices):**
+  - 768-d Inception features (Mixed_6e block, less semantic than the 2048-d pool used for FID), chosen for full-rank covariance at n = 1,000.
+  - Forgotten label only. FID_O pools all classes, so this measures the forgotten-label component of FID_O, not FID_O itself.
+- **Exploratory, not registered:** re-draws that passed C3-A have a slightly lower mean FD to the retrains on ship and truck (1.08 vs 1.41, Mann–Whitney p = 0.09; 1.12 vs 1.31, p = 0.13), and an equal one on automobile (1.60 vs 1.60). There is no clear relationship.
+
+### Record corrections (2026-11-25, found by the second independent review; no data or verdict changes)
+- **C3-B table.** The truck row movements 3.19e-6, 3.09e-6 and 1.82e-6 are *absolute* (`forget_row_moved` in label_diag.json), not relative. The label is corrected in place.
+- **`sanity_forget_row_untrained`.** label_diag.json has `False` for classes 1 and 3. That flag came from the superseded absolute threshold (Amendment A6 replaced it with relative movement). Under the relative criterion every removed row is untrained (≈10⁻⁷ relative movement, against ≈0.06 relative for trained rows).
+- **C4-R and the paper.** R1 held on cat (6/6) and ship (4/6) and failed overall (2/4 classes). In the paper, "the cause is the untrained input, not the draw" is replaced by "the draw and each network's reading of an untrained input contribute comparably". That the input being *untrained* is the cause still rests on the contrast with the trained null label, not on an intervention.
+
+## Study C5 — real FID_O against one retrain (registered 2026-11-25 13:55 IST, before any C5 data or code)
+**Why.**
+- The second independent review (6/10) found the link to published practice thin. C4-F measured a removed-label FD with 768-d features, not FID_O itself.
+- FID_O (Zheng, Tai & Yeh, CVPR 2026, arXiv:2603.22870, §5.2 and App. A) is "the FID between the generated images from the unlearned model and those from the oracle model for all the classes". It uses 5,000 samples per class, DDIM with 50 steps, and one retrain. Their Table 5 reports FID_O = 0.00 for the retrain, i.e. the retrain compared with itself, with no retrain-to-retrain floor. Published values are SalUn 3.59–6.93 and SPM 1.80–1.97.
+- C5 computes FID_O as defined, with a seed floor.
+
+**Design.**
+- Forgotten classes k ∈ {8, 1, 9} (ship, automobile, truck), the same models as C4-F:
+  - the original;
+  - the 3 exact retrains per class;
+  - the 20 C3-A re-draws per class (seeds 100–119, constructed exactly as in C3-A/C4-F).
+- Per (model, label): 1,000 samples, C3-A sampler (DDIM 50 steps, guidance 2.0). This is a compute-limited deviation from the 5,000 per class in Zheng et al.
+  - **Original:** all 10 labels, twice, with independent sampler seeds (copies A and B). Copy B gives the same-model sampling floor.
+  - **Retrains:** all 10 labels.
+  - **Re-draws:** only label k. For labels ≠ k a re-draw is the original network bit for bit, so its samples for those labels are the original copy A samples (same seeds, identical images).
+- Sampler seeds:
+  - original A: 70000 + label; original B: 71000 + label;
+  - retrain (k, s): 72000 + 100·k + 10·s + label;
+  - re-draw (k, r): 73000 + 100·k + (r − 100).
+- Features: pytorch-fid InceptionV3, 2048-d pool3 (standard FID), on images mapped from [−1, 1] to [0, 1]. Per-(model, label) features are cached so that pooled statistics can be assembled.
+- **FID_O(a, b):** the FD between Gaussian fits to the pooled 10,000 samples of model a (all 10 labels) and of model b.
+- **FID_O^ret(a, b):** the same, pooled over the 9 retained labels only.
+- Per class, the quantities are:
+  - 3 retrain-pair FID_O values;
+  - the same-model floor FID_O(original A, original B);
+  - 3 original–retrain values;
+  - 60 re-draw–retrain values;
+  - 3 retrain-pair FID_O^ret values.
+
+**Rules** (per class; overall verdicts as stated).
+- **O1 (FID_O against one retrain cannot separate re-draws from retrains).** Of the 60 (re-draw, retrain) FID_O values, the fraction ≤ the largest retrain-pair FID_O is ≥ 0.25. **Held overall if held on ≥ 2 of 3 classes.**
+- **O2 (the retrain floor is not sampling noise).** The mean retrain-pair FID_O is > 1.5 × the same-model floor. **Held overall if held on ≥ 2 of 3 classes.**
+- **O3 (sanity / power).** The minimum original–retrain FID_O is > the maximum retrain-pair FID_O. **Held overall if held on every class.** We are genuinely unsure: the 768-d single-label analogue (C4-F F3) failed. Pooling dilutes the forgotten label to 10 %, but the original's forgotten-class mode is absent from every retrain.
+- **O4 (the forgotten label drives the floor).** The mean retrain-pair FID_O over all 10 labels is > 1.25 × the mean retrain-pair FID_O^ret over the 9 retained labels. **Held overall if held on ≥ 2 of 3 classes.**
+
+**Registered interpretation.**
+- If O1 holds, FID_O against a single retrain scores a zero-step edit as retrain-like at a rate comparable to genuine retrains.
+- If O3 fails, FID_O against one retrain cannot reliably separate doing nothing from retraining.
+- If O2 fails, the retrain floor is within sampling noise at n = 1,000 per class, and O1/O3 say nothing about retrain variability.
+- We will not compare our values with Zheng et al.'s numerically as evidence: the model, sample size and guidance differ. We report them only as context for scale.
+
+**Code.**
+- `src/analysis/c5_fido.py`, written after this registration.
+- A smoke test on tiny settings; its outputs are discarded unread.
+- Unit tests for the pooled-statistics assembly and the O1–O4 scoring, on hand-built inputs, before any data.
+
+**Compute.** ≈ 170 sampling runs of 1,000 images (≈ 4.3 min each on the laptop under the C4-F memory settings), ≈ 12 h, local MPS only.
+
+### C5 outcome (scored 2026-11-26 03:20 IST with the registered code, `src/analysis/c5_fido.py`; `results/figures/c5_fido.json`)
+Same-model sampling floor FID_O(original A, original B) = **4.48** (n = 1,000 per label, 10,000 pooled, 2048-d).
+
+| | ship (8) | automobile (1) | truck (9) |
+|---|---|---|---|
+| retrain-pair FID_O | 7.23, 11.82, 12.18 | 24.13, 17.18, 16.40 | 9.96, 9.93, 8.64 |
+| mean / floor | 2.33× | 4.30× | 2.12× |
+| retrain-pair FID_O^ret (9 retained labels) | 6.67, 7.62, 6.69 | 6.32, 6.94, 5.84 | 7.33, 8.83, 6.09 |
+| mean all-label / mean retained | 1.49 | 3.02 | 1.28 |
+| original–retrain FID_O | 8.60, 9.81, 13.78 | 11.61, 23.40, 16.64 | 12.71, 11.64, 12.68 |
+| re-draw–retrain FID_O, median [range] (60) | 10.83 [6.28, 18.54] | 14.87 [8.55, 29.47] | 11.63 [8.39, 17.91] |
+| O1 fraction ≤ max retrain pair | 0.57 held | 0.93 held | 0.12 **failed** |
+| O2 | held | held | held |
+| O3 (min orig–retrain > max pair) | 8.60 < 12.18 **failed** | 11.61 < 24.13 **failed** | 11.64 > 9.96 held |
+| O4 (> 1.25×) | held | held | held (thin: 1.28) |
+
+**Overall verdicts (registered aggregation): O1 held (2/3), O2 held (3/3), O3 failed (needs 3/3; held on truck only), O4 held (3/3).**
+
+**Registered interpretation applied.**
+- O2 held: retrain-to-retrain FID_O is 2.1–4.3× the sampling floor at this n, so the retrain reference is not a fixed point.
+- O1 held: on ship and automobile, FID_O against one retrain scores most zero-step re-draws inside the retrain-pair range. On truck it does not (12 %): the truck retrains agree more closely with each other (max pair 9.96) and most re-draws fall outside.
+- O3 failed: on ship and automobile, the unmodified original is no farther from at least one retrain than the farthest retrain pair. On truck it is separated. FID_O against one retrain therefore cannot *reliably* separate doing nothing from retraining. This repeats the C4-F F3 failure on two of three classes; truck is the exception here, where it was not in C4-F.
+- O4 held: the forgotten label inflates the retrain floor on every class (1.28–3.02×). Retained-label-only pairs (5.8–8.8) still exceed the sampling floor, so some retrain variability is not forgotten-label driven, which is consistent with general training-seed FID variance (Dufour, Efros & Pérez 2026, arXiv:2606.20536).
+- Comparison with Zheng et al.'s published values (retrain 0.00, SalUn 3.59–6.93, SPM 1.80–1.97) is context for scale only, as registered: model, sample size (1,000 vs 5,000 per class) and guidance differ, and FID is biased upward at smaller n.
+
+**Exploratory (computed after scoring; not registered).** Against a fixed retrain, the fraction of re-draws with *lower* FID_O than the unmodified original: ship 0.45/0.60/0.25, automobile 0.65/0.75/0.75, truck 0.50/0.65/0.65 (per retrain seed). A re-draw does stop generating class k (C3-A), so lower output-level FID_O is expected. What FID_O cannot see is that a one-row re-fit restores the class (C3-K).

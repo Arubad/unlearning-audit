@@ -1,12 +1,14 @@
+> **Historical document.** The original ten-week plan. The project later narrowed to the diffusion finding in the top-level [README](../../README.md); unticked items here were superseded, not forgotten. Kept unedited apart from link paths.
+
 # Roadmap and progress tracker
 
-Ten weeks, one project at a time, minimum-viable version first. Tick boxes as you go; GitHub renders the counts in the file view. Every GPU run also gets an entry in [`EXPERIMENT_LOG.md`](EXPERIMENT_LOG.md).
+Ten weeks, one project at a time, minimum-viable version first. Tick boxes as you go; GitHub renders the counts in the file view. Every GPU run also gets an entry in [`EXPERIMENT_LOG.md`](../../EXPERIMENT_LOG.md).
 
 **Start date:** _fill in_ · **Target venue:** ICLR 2027 or NeurIPS 2027 workshop on unlearning / safety (4 pages); IndoML / CODS-COMAD as the Indian venue; TMLR as stretch.
 
 ## Milestone 0 — Pre-registration v0.2 (done 2026-10-18)
-- [x] Independent review ([`REVIEW.md`](REVIEW.md))
-- [x] H3 restricted to full-parameter tracks with norm control; H2 promoted; amendments logged in [`PREREGISTRATION.md`](PREREGISTRATION.md)
+- [x] Independent review ([`REVIEW.md`](REVIEW_2026-10-18.md))
+- [x] H3 restricted to full-parameter tracks with norm control; H2 promoted; amendments logged in [`PREREGISTRATION.md`](../../PREREGISTRATION.md)
 - [x] Scaffold committed (configs, requirements, src layout, log template)
 
 ## Milestone 1 — Weeks 1–2: reading and ownership (no GPU)
@@ -49,17 +51,25 @@ Ten weeks, one project at a time, minimum-viable version first. Tick boxes as yo
 Kaggle quota: 0.97 GPU-h left until the 2026-11-28 00:00 UTC refresh.
 
 **Write-up (no GPU)**
-- [ ] Paper figures from the existing `results/figures/*.json`:
+- [x] Paper figures from the existing `results/figures/*.json` (done 2026-11-24; `paper/figures/fig1–fig5`, PDF + PNG):
   - (1) the label-row norms for the retrain and the original;
   - (2) removed-label vs null-label E with leave-one-oracle-out CIs, per class;
   - (3) C3-A pass rates of re-draws vs methods;
   - (4) C3-K re-fit rates;
   - (5) per-timestep pair ratios.
-- [ ] Add a figure-generation script so every figure is reproduced by a single command (`src/analysis/`).
-- [ ] Cut `paper/DRAFT.md` to workshop length (4 pages + appendix); move the method details and the C1 negative result to the appendix.
-- [ ] Fix the citation details flagged in `paper/RESEARCH_JOURNAL.md` §9 (check every arXiv ID against its abstract).
-- [ ] Get an outside read of the draft (a collaborator, or an agent not anchored on our conclusions).
-- [ ] Pick a venue and its deadline; format to the venue's template.
+- [x] Figure script: `python -m src.analysis.paper_figures` rebuilds every figure by a single command (done 2026-11-24).
+- [x] Workshop version: `paper/workshop/main.tex` → `main.pdf`, 4 pages of main text + references + 2-page appendix (C1 negative result, registrations, method details). Build with `cd paper/workshop && tectonic main.tex`. Uses a generic layout until a venue is chosen. `paper/DRAFT.md` stays as the long version.
+- [x] Citation check (2026-11-24, arXiv API plus full texts): no wrong IDs, authors or years. Fixed the descriptions of Selective Amnesia/EraseDiff (no retrain baseline), Ebrahimpour-Boroojeny (target built from the original model), Hayes, Lanyon, Panda UAI (a classifier paper) and Land & Bartolo. Added SFD at ICLR 2025, Kim, Cha & Kim 2026, DDPM and CIFAR-10. `paper/workshop/refs.bib` is author-verified.
+- [ ] Optional: cite a source for the gradient-difference baseline and for the CIFAR-10 gating classifier (App. D).
+- [x] Outside read by an agent not given our conclusions (2026-11-24): it checked every number, scored the paper 5/10 (weak accept once overclaims are fixed), and all its verified issues were fixed in the paper, DRAFT, log and pre-registration (dated notes). See journal §7.17.
+- [ ] Outside read by a human collaborator or advisor before submission.
+- [ ] Optional, laptop-only, forward passes, no training: the *common-row control*. Give all three retrains the same removed-label row and recompute the pair ratios and LOO E, to establish the mechanism causally. Register a short amendment first. This is the reviewer's top suggestion that needs no new training.
+- [ ] **Decision for the author:** pick a venue and format to its template. Candidates found on 2026-11-24 (check the official sites):
+  - SaTML 2027 workshops: papers around 2026-12-18 if a relevant workshop runs; the event is 2027-05-03.
+  - ICLR 2027 workshops: the list was not yet published; deadlines are typically around February.
+  - ICML 2027 workshops: early August 2027, deadlines around May.
+  - TMLR: rolling submissions, full-length version.
+  - arXiv preprint at any time.
 
 **Optional strengthening (after the 2026-11-28 quota refresh)**
 - [ ] Extend C3-A/C3-K to 1–2 more classes, pre-registered before data, to firm up the "30–60 %" range. This needs 3 retrains per class, about 6–7 GPU-h each.
@@ -67,7 +77,7 @@ Kaggle quota: 0.97 GPU-h left until the 2026-11-28 00:00 UTC refresh.
 - [ ] Re-check the C3-B homogeneity margin (passed by 0.01 on truck) on any new class.
 
 **Housekeeping**
-- [ ] Make the hand-rolled test runner in `tests/test_audit_cores.py` assert the number of tests it ran. On 2026-11-24 the last 7 tests were found to be silently skipped; this is fixed, and all 26 now pass.
+- [x] Make the hand-rolled test runner in `tests/test_audit_cores.py` assert the number of tests it ran (done 2026-11-24: it now fails if any defined test did not run). On 2026-11-24 the last 7 tests were found to be silently skipped; this is fixed, and all 26 now pass.
 - [ ] Keep `ROADMAP.md`, `README.md` and the journal inventory (§6) in sync when anything new runs.
 
 **Deferred / future work (not in this paper)**

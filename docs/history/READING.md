@@ -1,3 +1,5 @@
+> **Historical document.** Reading list for the original proposal (influence, membership inference, LLM unlearning). Kept unedited.
+
 # Reading list
 
 Ordered so that each item uses the one before it. For each paper write a half-page note in `paper/notes/`: the claim, the one experiment that supports it, and what would have refuted it. The notes become the related-work section.

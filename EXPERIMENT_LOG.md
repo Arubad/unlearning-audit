@@ -192,7 +192,7 @@ _(real entries start below)_
 - Quota before C3: ≈ 9.5 GPU-h (refresh 2026-11-28). v8 ≈ 6.6 h, v9 ≤ 2.5 h.
 - Observed (C3-B, 2026-11-24 ≈ 00:37 IST):
   - v8 COMPLETE in 6.84 GPU-h (exit codes 0, 0). Truck retrains are in `results/checkpoints/ddpm_cifar10_retain_c9_f0.1_s{0,1,2}.pt`.
-  - Forget row untrained (1.8–3.2e-6). Null-label LOO plain E 1.08, 0.97, 0.96, every CI containing 1. Removed-label std E 0.56, −0.95, 0.86.
+  - Forget row untrained (1.8–3.2e-6). Null-label LOO plain E 1.08, 0.97, 0.96, every CI containing 1 *[correction 2026-11-24: wrong; the first CI is [1.03, 1.13], which excludes 1. The registered C2-A rule tests the point estimate in [0.8, 1.2], so the verdict is unchanged]*. Removed-label std E 0.56, −0.95, 0.86.
   - C3-B-B held, with a max null pair ratio of 1.49 at t = 10. **Claim (b) confirmed on truck.** The full table is in `PREREGISTRATION.md` → "C3-B outcome". Output: `results/figures/label_diag.json` → `class9`.
 - Observed (C3-A cells): all 30 cells done (3 classes × 5 methods × 2 seeds).
   - 11 ran locally on M4/MPS: 27–55 min each, ≈ 0.8–1.6 s/step.
@@ -233,4 +233,70 @@ _(real entries start below)_
 - Observed, extension (03:20–04:22 IST, local; `results/figures/c3_knowledge_c{1,9}.json`). Gated forget-class rate, before → after re-fitting one row:
   - **automobile:** re-draws 100 / 104 / 106: 0.000 / 0.010 / 0.035 → **0.985 / 0.985 / 0.990**. The original's rate is 0.985. Retrains: 0.010 / 0.000 / 0.000 → 0.085 / 0.150 / 0.190. Unconditional rate: original 0.030; retrains 0.003 / 0.007 / 0.006.
   - **truck:** re-draws 100 / 101 / 104: 0.000 / 0.005 / 0.000 → **0.960 / 0.975 / 0.955**. The original's rate is 0.975. Retrains: 0.015 / 0.035 / 0.000 → 0.155 / 0.245 / 0.155. Unconditional rate: original 0.029; retrains 0.005 / 0.002 / 0.006.
-  - **K1, K2 and K3 held on all three classes:** 9 / 9 re-draws reach ≥ 0.955; 9 / 9 retrains stay ≤ 0.245; the original's unconditional rate is 3.4–14× each retrain's.
+  - **K1, K2 and K3 held on all three classes:** 9 / 9 re-draws reach ≥ 0.955; 9 / 9 retrains stay ≤ 0.245; the original's unconditional rate is 3.4–14× each retrain's *[correction 2026-11-24: 4.3–14.5×; "3.4" was a transposition of 4.3. K3 (original > retrains) is unaffected]*.
+
+## 2026-11-24 — C4 (registered 2026-11-24 12:53 IST, before data): row-swap mechanism test, cross-class specificity control, removed-label Fréchet distance (FID_O analogue)
+- Config:
+  - `src/analysis/c4_controls.py` (C4-R, C4-X; 256 queries, label_diag noise, 1,000 bootstrap draws);
+  - `src/analysis/c4_fd.py` (C4-F; 1,000 samples per model, 50 DDIM steps, guidance 2.0, InceptionV3 768-d features).
+- Git commit: uncommitted working tree on top of `5ead32e`.
+- Hardware: Apple M4 (MPS), laptop only; 0 Kaggle GPU-h. Expected wall-clock ≈ 10 min (R, X) + ≈ 4.5 h (F: 84 sampling runs of 1,000 images, about 50 s per 256).
+- Expected (registered rules in PREREGISTRATION.md, Study C4):
+  - **R1/R2**: if the independent draws drive the heterogeneity, row changes outweigh network changes, and a common row cuts the max/min ratio by ≥ half. We are genuinely unsure: networks may read an untrained input idiosyncratically.
+  - **X1**: cross-class retrains score null E < 0.5.
+  - **F1–F3**: single-retrain removed-label FD cannot separate re-draws from retrains (F1); retrains disagree more under the removed label than under airplane (F2); the original is farther than any retrain pair (F3).
+- Smoke test: tiny settings (16 queries, 8 samples, 1 class), outputs discarded unread. Two bugs were fixed before data: scipy ≥ 1.16 has no `sqrtm(disp=)`, and the 768-d Inception block needs average pooling, as in pytorch_fid.
+- Unit tests: 28/28, including the C4 scoring rules.
+- Observed, C4-R and C4-X (2026-11-24, ≈ 13:00 IST; `results/figures/c4_controls.json`):
+  - **C4-R failed on all three rules.**
+    - R1: the row wins at 2, 6, 4 and 3 of the 6 timesteps t ≤ 400 (automobile, cat, ship, truck); D_row/D_net = 0.69–1.71.
+    - R2: the common-row max/min ratio does not halve: H_common vs H_indep is 9.34 vs 16.13, 3.98 vs 4.45, 4.42 vs 3.23 and 8.49 vs 6.56.
+    - R3: 20 of 36 common-row LOO scores are undefined; 5 of the 16 defined scores are in [0.6, 1.4].
+    - Interpretation: the draw's identity is not the main driver. The mechanism is restated as "untrained input, read idiosyncratically by each network". The "second source of variation" explanation is withdrawn from DRAFT and the workshop paper.
+  - **C4-X held:** 27/27 cross-class null-label E < 0.5 (range −0.41 to 0.19).
+- Operational notes, C4-F:
+  - **Pace.** Sampling took ≈ 10 min per 1,000 images, not the ≈ 3.3 min extrapolated. *[Correction 12:48: I first attributed this to classifier-free guidance. After the memory fix the pace was ≈ 4.2 min per sample (33 samples, 10:31–12:48), so most of the slowdown was memory pressure (swap), not guidance.]*
+  - **Paused overnight.** The charger was disconnected and the laptop hibernated at 1 % battery (2026-11-25 00:48 → 10:12 IST). The run resumed in place; no data were lost.
+  - **Memory (10:24 IST).** The MPS caching allocator had grown to a 16 GB footprint on the 16 GB laptop. The run was stopped, losing one in-progress sample; per-model stats are cached, so nothing else was recomputed.
+  - **Code changes.** Added `gc.collect()` + `torch.mps.empty_cache()` after each model, and capped MPS memory with `PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.5` and `LOW=0.4`.
+  - **Inception chunk.** The first resume hit the cap in the Inception pass (batch 250), so the chunk was reduced to 50.
+  - **Chunk check.** Eval-mode Inception is per-image: on 100 random images, features from chunk 100 and chunk 20 differed by max abs 0.0. Sampling batch (250) and seeds are unchanged.
+  - **Result.** After the restart the footprint is ≈ 3.9 GB. Samples 1–51 come from the first process, 52 onward from the resumed one.
+- Observed, C4-F (finished 2026-11-25 12:48 IST; `results/figures/c4_fd.json`; full table in PREREGISTRATION.md, "C4-F outcome"):
+  - **F1 held** (fraction of re-draw–retrain FDs ≤ max retrain pair: 0.73 / 0.85 / 0.28).
+  - **F2 held** (removed-label retrain-pair FD is 8.3× / 16.3× / 5.5× the airplane pair FD).
+  - **F3 failed on all three classes.** Original–retrain FD is 0.91–2.23 against max retrain pair 1.00–2.28, while under airplane every pair is 0.11–0.18. Against one retrain, the forgotten-label FD does not reliably separate the unmodified original from a retrain.
+  - Consistency check: re-deriving C3-A passes from `c3a_consequence.json` gives 6 / 9 / 12, as registered.
+  - Exploratory: no clear relation between a re-draw's FD and its C3-A pass/fail (Mann–Whitney p = 0.09, 0.94, 0.13).
+  - Caveats: 768-d features; forgotten label only (a component of FID_O, not FID_O).
+
+## 2026-11-25 — Second independent review (6/10) and writing fixes; C5 registered (13:55 IST) and launched
+- **Review.** A fresh reviewer, not shown the first review, scored 6/10 (confidence 4/5). It verified the headline numbers against the JSON files. Its main points:
+  - the link to published metrics is thin (W1);
+  - the null-label audit is not shown to be graded or sensitive (W2);
+  - the abstract over-states C4-R (W3);
+  - the null-label standardised E miscalibration is omitted (W4);
+  - "every class with measurable signal" and the ship pre-registration are framed favourably (W5);
+  - the post-hoc 3/9 sits inside a pre-registered claim (W6);
+  - the null-token requirement goes unstated (W7: ADM has no null class; EDM `label_dropout` defaults to 0; verified in `scratchpad/codecheck`);
+  - the FD result may depend on the 768-d features (W8);
+  - the FD wording and two figure defects.
+- **Writing fixes applied** (paper/workshop/main.tex, DRAFT, PREREGISTRATION "Record corrections"): all of W3–W7; the FD wording; cat 4.5 → 4.4; "to the bit" → exact in theory, ≤ 3.4e-6 measured; mixed-precision training stated; the re-fit hyper-parameters and ship seed choice stated; Figure 3 markers (after-value now plotted exactly); the Figure 5 legend; the bib brace.
+- **Experiments.** The user chose to run only "real FID_O" (C5) of the four offered: the train-the-row test, the graded positive control, the 2048-d FD re-check, and real FID_O.
+- **C5 config:**
+  - 2048-d pool3 features; 1,000 samples per (model, label);
+  - original × 2 (copy B is the sampling floor); 3 retrains × 10 labels for each of classes 8, 1, 9; 20 re-draws × label k;
+  - ≈ 170 sampling runs, ≈ 12 h local (MPS, memory cap 0.5/0.4, Inception chunk 50).
+- **Smoke test** (n = 8, class 8, 2 re-draws, scratch cache): ran end to end, and its outputs were deleted unread. It wrote its JSON to a stray in-repo path (`private/...`), which was deleted.
+- Unit tests: 29/29 (new: `test_c5_fido_pooling_seeds_and_rules`).
+- **Expected** (registered):
+  - O1: re-draws fall within the retrain spread;
+  - O2: the retrain floor exceeds 1.5 × the sampling floor;
+  - O3: unsure; the 768-d analogue failed;
+  - O4: the forgotten label inflates the retrain-pair FID_O by ≥ 1.25×.
+
+## 2026-11-26 — C5 (registered 2026-11-25 13:55 IST) — real FID_O — COMPLETED
+- Ran 14:00:41 → 03:15:35 (≈ 13.2 h, ≈ 4.7 min per 1,000-image sampling run; 170 runs). Exit 0. Laptop MPS, memory cap 0.5/0.4, Inception chunk 50, `caffeinate -i -s`. The charger was briefly unplugged in the evening (battery stayed ≥ 80 %); no interruption.
+- Features cached at `results/c5_fido_cache/` (git-ignored); output `results/figures/c5_fido.json`.
+- **Verdicts:** O1 held (2/3; truck failed, 0.12), O2 held (3/3), **O3 failed** (held on truck only), O4 held (3/3; truck thin at 1.28×). Full table and interpretation: PREREGISTRATION "C5 outcome"; journal §7.20.
+- **Mid-run reporting note.** Interim updates to the user after ship and automobile said the verdicts were fixed by those two classes. That was correct for the overall verdicts, but the truck pattern (O1 failed, O3 held) was not known and is reported here.

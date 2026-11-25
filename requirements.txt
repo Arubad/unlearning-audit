@@ -13,6 +13,7 @@ pyarrow>=16.0
 matplotlib>=3.9
 pyyaml>=6.0
 tqdm>=4.66
+pytorch-fid>=0.3      # Inception features for C4-F (768-d) and C5 FID_O (2048-d)
 # optional:
 # bitsandbytes>=0.43     # 8-bit AdamW for the full-FT LLM arm (H3)
 # torchmetrics>=1.4      # FID on retain classes (falls back to "unavailable")

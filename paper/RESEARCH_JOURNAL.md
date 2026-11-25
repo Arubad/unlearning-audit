@@ -6,7 +6,7 @@ A living research record: the formal question, the theory behind every measureme
 |---|---|
 | [`PREREGISTRATION.md`](../PREREGISTRATION.md) | The frozen hypotheses and numeric tests, plus dated amendments |
 | [`EXPERIMENT_LOG.md`](../EXPERIMENT_LOG.md) | One entry per GPU run: config hash, expectation, observation, next change |
-| [`REVIEW.md`](../REVIEW.md) | Novelty and citation check against the literature |
+| [`REVIEW.md`](../docs/history/REVIEW_2026-10-18.md) | Novelty and citation check against the literature |
 | **this file** | The argument: why each measurement means what we claim it means, and what the results say |
 
 Last updated: 2026-11-24. All earlier **[pending]** markers are resolved; each now points to the section with the result.
@@ -328,7 +328,7 @@ Neither affects distributional claims. Both are logged in `EXPERIMENT_LOG.md`.
 | D6-audit (A3, exploratory) | Audit at the selected operating point per method + `embedding_reset`, seeds 0, 1, TRAK off | ≤ 8 cells | ✅ run v5 (§7.10) |
 | D2-s | Oracle retrains, subset regime (2,500 cats removed), seeds 0, 1 | 2 trainings | ✅ run v5 (§7.10) |
 | D3–D5-s | Subset-regime sweep, 7 methods × 2 seeds | 14 cells | ✅ run v5, 14/14 (§7.10) |
-| A | Hypothesis report and figures | — | ✅ reports per study (§7.10–7.16); paper figures still to make |
+| A | Hypothesis report and figures | — | ✅ reports per study (§7.10–7.17); paper figures in `paper/figures/` (`python -m src.analysis.paper_figures`) |
 
 That leaves 2 trainings, 28 audited cells and 10 interventions on the diffusion side. On 2× T4 this is about one to one-and-a-half 11 h Kaggle runs, depending on the per-cell audit time measured in run v3.
 
@@ -894,6 +894,90 @@ Near classes: SNR 0.98. $E_\text{std}$ is undefined, because retraining without 
 
 **Limits.** 3 re-draws per class; one budget (a larger re-fit budget might lift the retrains); exploratory.
 
+### 7.17 End-of-study audit of the write-up (2026-11-24; no new runs; post-hoc analyses are from existing JSON)
+
+**Process.** Two independent agents read the write-up, neither given our conclusions. One checked every citation against arXiv and the full texts. The other checked every number in the workshop paper against the result JSONs and wrote a critical review (score 5/10, "weak accept if the overclaims are fixed").
+
+**Errors found and corrected.** Each was verified by recomputation before it was changed.
+- *Unconditional-rate ratio.* "3.4–14×" should read **4.3–14.5×** (a transposition). Corrected in DRAFT, the log (dated note) and the paper.
+- *Truck null CIs.* "every truck null CI contains 1" is wrong: 7 of 9 null CIs contain 1 across classes. The registered C2-A rule uses the point estimate in [0.8, 1.2], so it still holds.
+- *Removed-label calibration.* "A held-out retrain is not recognised" overstated the result. Under standardised E, 4/12 rotations fall in [0.6, 1.4]. The supported claim is that every class has at least one failing rotation.
+- *Wrong theory link.* The null trace peaking at t = 100–200 was attributed to class commitment at high noise, which is backwards. The citation link was removed.
+- *Cat.* Cat was called "no measurable trace", but its pooled null SNR is 1.21, just above the 1.2 definedness threshold. The correct statement is that it is below the registered power threshold of 1.5.
+- *Re-draw wording.* "256 numbers no data shaped": the re-draw overwrites a trained row. "Which draws pass is luck": outcomes correlate across classes (ship–truck ρ = 0.52), because the same vectors are reused.
+- *Pre-registration status.* The null-label E = 0 for re-draws was presented next to "pre-registered" without saying it holds by construction.
+- *Fig. 1 caption* contradicted the plot. *Fig. 5* called t ≤ 400 the "audit range"; the audit also uses t = 600 and 800, where the null floor is also heterogeneous.
+
+**Post-hoc analyses added (labelled as such).**
+- Held-out exact retrains pass the C3-A rule in **3/9** leave-one-out rotations, against 27/60 re-draws. The removed-label audit cannot distinguish re-draws from retrains in either direction. This is a stronger and more honest framing than "re-draws pass".
+- Wilson CIs for the pass rates: [0.15, 0.52], [0.26, 0.66], [0.39, 0.78].
+- Re-draw medians: 0.40, 1.30, 0.88.
+- Pass decomposition (E band / behaviour gate): 10/10, 10/17, 12/18.
+- Retain-only fine-tuning already scores null E −0.24 to −0.74, so null E penalises generic drift. The null audit is shown to be specific, not sensitive.
+
+**Weaknesses that remain (stated in the paper's limitations).**
+- No positive control for the null-label audit.
+- No causal isolation of the row's share of the heterogeneity.
+- Rate-only audits have a homogeneous reference, and are passed by suppression for a different, known reason. The paper's scope is therefore narrowed to loss- and output-closeness audits.
+
+**Cheapest strengthening (optional).** A *common-row control*, forward passes only, on the existing retrains and runnable on the laptop: give all three retrains the same removed-label row, then recompute the pair ratios and LOO E. If the heterogeneity collapses, the mechanism is causally established. Before running it, it should be registered as a short amendment.
+
+### 7.18 Generality of the mechanism in public training code (checked 2026-11-24 from the `main` branches on GitHub)
+- **DiT** (facebookresearch/DiT):
+  - `models.py`: `LabelEmbedder` uses `nn.Embedding(num_classes + use_cfg_embedding, hidden_size)`, with a classifier-free-guidance null row.
+  - `train.py`: `torch.optim.AdamW(..., lr=1e-4, weight_decay=0)`.
+  - Same structure as our model: an absent class's row is untrained, and a trained null row exists.
+- **ADM** (openai/guided-diffusion):
+  - `unet.py`: `self.label_emb = nn.Embedding(num_classes, time_embed_dim)`.
+  - `train_util.py` and `scripts/image_train.py`: AdamW with default `weight_decay=0.0`.
+  - The mechanism applies. There is no built-in null row, so our null-label alternative would need CFG training.
+- **EDM** (NVlabs/edm):
+  - `networks.py`: labels enter as a one-hot vector through `map_label = Linear(label_dim, noise_channels)`, with `label_dropout` zeroing the one-hot.
+  - `train.py`: `torch.optim.Adam`, no weight decay.
+  - An absent class's column receives exactly zero gradient, because its one-hot input is always 0. Same mechanism; the "null" input is the zero vector, which is trained.
+
+So the untrained-row mechanism holds *by construction* for the standard class-conditional recipes of all three code bases, without weight decay. What it does to their audits is not measured here.
+
+
+### 7.19 C4 — mechanism test, specificity control and the removed-label Fréchet distance (registered 2026-11-24 12:53 IST, before data; laptop only; scored with the registered code)
+**Why.** An independent review of the workshop draft (5/10) asked three things:
+- whether the untrained row *causes* the heterogeneity (W7);
+- whether null-label E ≈ 1 just means "a different network" (W2);
+- whether any published metric is actually affected (W1). FID_O (Zheng, Tai & Yeh 2026) compares the unlearned model's samples with one retrain's "for all the classes", which includes the forgotten label.
+
+**C4-R (row swap; failed, all three rules).**
+- Transplanting retrain rows between retrains (a 3×3 grid per class) moves removed-label losses about as much as changing the network does (D_row/D_net 0.69–1.71 at t ≤ 400).
+- A common row does not halve the floor's max/min ratio (16.1 → 9.3, 4.45 → 3.98, 3.23 → 4.42, 6.56 → 8.49), nor calibrate it.
+- Our earlier explanation, that the independent draws add a second source of variation, is withdrawn.
+- What remains is the weaker statement that each network reads an *untrained* input in its own way. Its evidence is the contrast with the trained null label, whose floor is homogeneous; it is not an intervention.
+- A direct test would train the removed row in each retrain and re-measure the floor (not done).
+
+**C4-X (cross-class; held).** Retrains that removed a different class score null-label E −0.41 to 0.19 (27/27 < 0.5). The null-label audit responds to the removal of class k, not to "being another network".
+
+**C4-F (removed-label FD; F1 and F2 held, F3 failed).**
+- Retrains disagree 5.5–16× more under the removed label than under airplane.
+- 28–85 % of re-draws fall within the retrain-pair spread.
+- The registered sanity check failed on every class: the unmodified original is no farther from at least one retrain than the farthest retrain pair. The instrument floor (0.11–0.18 under airplane) rules out measurement noise. The reference spread itself swallows the effect of doing nothing.
+- For the FID_O argument, this means the forgotten-label component of a single-retrain FD comparison is dominated by which retrain was drawn.
+- Limits: 768-d features; we did not compute FID_O itself, over all classes.
+
+**What changed in the write-up.** The mechanism is now stated as "untrained input" in DRAFT and the workshop paper, and the generality (§7.18) and C4 results are in both.
+
+### 7.20 C5 — real FID_O against one retrain (registered 2026-11-25 13:55 IST, before data; laptop only; scored with the registered code)
+**Why.** The second review (6/10) found the link to published practice thin: C4-F measured a removed-label FD with 768-d features, not FID_O itself. C5 computes FID_O as Zheng, Tai & Yeh (CVPR 2026) define it (all classes, 2048-d Inception), adding a same-model sampling floor and a retrain-to-retrain floor. Their Table 5 reports retrain FID_O = 0.00.
+
+**Result (n = 1,000 per label; floor 4.48).**
+- **The retrain is not a fixed point (O2 held, 3/3).** Two exact retrains differ by FID_O 7.2–12.2 (ship), 16.4–24.1 (automobile) and 8.6–10.0 (truck), i.e. 2.1–4.3× the sampling floor.
+- **The forgotten label drives much of it (O4 held, 3/3).** Over the 9 retained labels only, the same pairs give 5.8–8.8. Inflation is 1.49×, 3.02× and 1.28× (truck thin). The retained-only values still exceed the floor, consistent with general training-seed FID variance (Dufour et al. 2026).
+- **Re-draws are scored retrain-like on 2 of 3 classes (O1 held, 2/3).** 57 % (ship) and 93 % (automobile) of re-draw–retrain values fall inside the retrain-pair range; on truck only 12 %, because its retrains agree closely.
+- **Doing nothing is not reliably separated (O3 failed; held on truck only).** The unmodified original's FID_O to at least one retrain is below the largest retrain pair on ship (8.60 vs 12.18) and automobile (11.61 vs 24.13). This is the C4-F F3 failure at the level of the published metric; on truck it does separate (11.64 vs 9.96).
+
+**Reading.** The single-retrain FID_O protocol has a reference spread of the same size as published method differences (SalUn 3.59–6.93, SPM 1.80–1.97; scale context only, as registered: different model, n and guidance). Whether a reported FID_O gap is meaningful depends on which retrain was drawn, and on two of three classes the spread swallows the effect of doing nothing. Truck shows the effect is class-dependent, not universal.
+
+**Exploratory (not registered).** Against a fixed retrain, 25–75 % of re-draws have lower FID_O than the unmodified original. Re-draws do stop generating class k (C3-A), so this is expected at the output level; what FID_O cannot see is the one-row recovery (C3-K).
+
+**Related work found 2026-11-25 (to cite).** Cho et al. 2025 (arXiv:2510.12981) use retrain-vs-retrain FADE as a floor on Stable Diffusion and find it small (≈ 0.3–1.9). This is consistent with our mechanism: a frozen text encoder means the forgotten prompt is never an untrained input. Dufour, Efros & Pérez 2026 (arXiv:2606.20536) quantify training-seed FID variance (≈ 1.3 % CoV, not unlearning).
+
 ## 9. Direction decision (2026-11-21 ≈ 21:30 IST)
 
 **Goal.** One small but genuine finding, confirmed on data collected after the claim was fixed.
@@ -949,7 +1033,7 @@ Near classes: SNR 0.98. $E_\text{std}$ is undefined, because retraining without 
 - The *surrounding* critique is known: retrain is a fragile, seed-dependent target. So F4′ is positioned as a specific mechanism and fix inside that critique.
 
 **Must cite and position against.**
-- Output-distribution reweighting for class unlearning: retrain target on the forget class, averaged over retrains. Ebrahimpour-Boroojeny, Wang & Sundaram, arXiv:2506.20893.
+- Output-distribution reweighting for class unlearning. Ebrahimpour-Boroojeny, Wang & Sundaram, arXiv:2506.20893. *[Corrected 2026-11-24 after a full-text check: the TREW target approximates the retrain's forget-class distribution by tilting the **original** model's predictions by inter-class similarity. Retrains appear only as CMIA shadow models; there is no averaging over retrains.]*
 - Head-bias gradient for an absent class in classifiers. Zheng, Chen, Guo & Xiao, arXiv:2605.08730.
 - Untrained embedding rows stay at init (LLM tokenizers; the mechanism, outside unlearning). Land & Bartolo 2024, "Fishing for Magikarp", arXiv:2405.05417.
 - Retrain-referenced membership inference is miscalibrated. Hayes et al. 2024, arXiv:2403.01218.
@@ -976,6 +1060,8 @@ Near classes: SNR 0.98. $E_\text{std}$ is undefined, because retraining without 
 
 ## 8. References
 
+*Citation re-check 2026-11-24 (arXiv API and full texts of the diffusion-unlearning papers). It found no wrong IDs, authors or years. Description corrections were applied to `paper/DRAFT.md`: Selective Amnesia and EraseDiff report no retrain baseline; Hayes, Lanyon and Land & Bartolo were reworded. Added: Chen et al. SFD (ICLR 2025); Kim, Cha & Kim 2026, "Are We Truly Forgetting?", arXiv:2503.06991; Ho, Jain & Abbeel 2020; Krizhevsky 2009.*
+
 All arXiv IDs and metadata verified against arXiv and venue pages on 2026-11-19. Exceptions: the four entries without an arXiv ID were checked from prior knowledge only, and Hayes et al. has no confirmed peer-reviewed venue.
 
 - Aghajanyan, Zettlemoyer, Gupta (2021). Intrinsic dimensionality explains the effectiveness of language model fine-tuning. arXiv:2012.13255
@@ -983,7 +1069,7 @@ All arXiv IDs and metadata verified against arXiv and venue pages on 2026-11-19.
 - Bae, Ng, Lo, Ghassemi, Grosse (2022). If influence functions are the answer, then what is the question? NeurIPS. arXiv:2209.05364
 - Basu, Pope, Feizi (2021). Influence functions in deep learning are fragile. ICLR. arXiv:2006.14651
 - Belinkov (2022). Probing classifiers: promises, shortcomings, and advances. Computational Linguistics. arXiv:2102.12452
-- Biroli, Bonnaire, de Bortoli, Mézard (2024). Dynamical regimes of diffusion models. arXiv:2402.18491 (from the 2026-11-21 literature check)
+- Biroli, Bonnaire, de Bortoli, Mézard (2024). Dynamical regimes of diffusion models. Nature Communications 15, 9957. arXiv:2402.18491
 - Bourtoule et al. (2021). Machine unlearning. IEEE S&P. arXiv:1912.03817
 - Cao, Yang (2015). Towards making systems forget with machine unlearning. IEEE S&P.
 - Carlini et al. (2022). Membership inference attacks from first principles (LiRA). IEEE S&P. arXiv:2112.03570
@@ -992,16 +1078,16 @@ All arXiv IDs and metadata verified against arXiv and venue pages on 2026-11-19.
 - Deeb, Roger (2024). Do unlearning methods remove information from language model weights? arXiv:2410.08827
 - Duan et al. (2023). Are diffusion models vulnerable to membership inference attacks? (SecMI). ICML. arXiv:2302.01316
 - Fan et al. (2024). SalUn: empowering machine unlearning via gradient-based weight saliency in both image classification and generation. ICLR. arXiv:2310.12508
-- Sclocchi, Favero, Wyart (2025). A phase transition in diffusion models reveals the hierarchical nature of data. PNAS. arXiv:2402.16991 (from the 2026-11-21 literature check)
+- Sclocchi, Favero, Wyart (2025). A phase transition in diffusion models reveals the hierarchical nature of data. PNAS 122(1), e2408799121. arXiv:2402.16991
 - Siddiqui, Weller, Krueger, Dziugaite, Mozer, Triantafillou (2025). From Dormant to Deleted: tamper-resistant unlearning through weight-space regularization. NeurIPS. arXiv:2505.22310
-- Georgiev, Rinberg, Park, Garg, Ilyas, Madry, Neel (2025). Attribute-to-Delete: machine unlearning via datamodel matching (KLOM). ICLR. arXiv:2410.23232
+- Georgiev, Rinberg, Park, Garg, Ilyas, Madry, Neel (2025). Attribute-to-Delete: machine unlearning via datamodel matching (KLOM). ICLR 2025, published there as "Machine Unlearning via Simulated Oracle Matching". arXiv:2410.23232
 - Ginart, Guan, Valiant, Zou (2019). Making AI forget you: data deletion in machine learning. NeurIPS. arXiv:1907.05012
 - Golatkar, Achille, Soatto (2020). Eternal sunshine of the spotless net: selective forgetting in deep networks. CVPR. arXiv:1911.04933
 - Guo, Goldstein, Hannun, van der Maaten (2020). Certified data removal from machine learning models. ICML. arXiv:1911.03030
 - Gur-Ari, Roberts, Dyer (2018). Gradient descent happens in a tiny subspace. arXiv:1812.04754
 - Hayes et al. (2024). Inexact unlearning needs more careful evaluations to avoid a false sense of privacy. arXiv:2403.01218
 - Heng, Soh (2023). Selective Amnesia: a continual learning approach to forgetting in deep generative models. NeurIPS. arXiv:2305.10120
-- Ho, Salimans (2022). Classifier-free diffusion guidance. NeurIPS 2021 Workshop on Deep Generative Models. arXiv:2207.12598 (from prior knowledge; not re-verified)
+- Ho, Salimans (2022). Classifier-free diffusion guidance. NeurIPS 2021 Workshop on Deep Generative Models. arXiv:2207.12598 (verified 2026-11-24)
 - Ho, Jain, Abbeel (2020). Denoising diffusion probabilistic models. NeurIPS. arXiv:2006.11239
 - Hu et al. (2021). LoRA. arXiv:2106.09685
 - Hu, Fu, Wu, Smith (2025). Unlearning or obfuscating? Jogging the memory of unlearned LLMs via benign relearning. ICLR. arXiv:2406.13356
@@ -1013,7 +1099,7 @@ All arXiv IDs and metadata verified against arXiv and venue pages on 2026-11-19.
 - Koh, Liang (2017). Understanding black-box predictions via influence functions. ICML. arXiv:1703.04730
 - Li, Farkhoor, Liu, Yosinski (2018). Measuring the intrinsic dimension of objective landscapes. ICLR. arXiv:1804.08838
 - Łucki, Wei, Huang, Henderson, Tramèr, Rando (2024). An adversarial perspective on machine unlearning for AI safety. TMLR. arXiv:2409.18025
-- Panda, Suresh, Guha, Prathosh A.P. (2025). Concept forgetting via label annealing. UAI, PMLR 286:3346–3360. https://proceedings.mlr.press/v286/panda25a.html (no arXiv version found)
+- Panda, Suresh, Guha, Prathosh A.P. (2025). Concept forgetting via label annealing. UAI, PMLR 286:3346–3360. https://proceedings.mlr.press/v286/panda25a.html (no arXiv version found). A classifier paper (pseudo-labels from the model's own predictions, then fine-tuning, on MNIST, CIFAR-10 and CelebA); our null-token variant is our own diffusion adaptation.
 - Panda, Varun M S, Jain, Maharana, Prathosh A.P. (2026). Unlearning in diffusion models under data constraints: a variational inference approach. TMLR. arXiv:2510.04058
 - Park et al. (2023). TRAK: Attributing model behavior at scale. ICML. arXiv:2303.14186
 - Qi et al. (2025). Safety alignment should be made more than just a few tokens deep. ICLR (oral). arXiv:2406.05946
@@ -1026,7 +1112,7 @@ All arXiv IDs and metadata verified against arXiv and venue pages on 2026-11-19.
 - Panda, Tarsadiya, Sourav, Prathosh A.P., Karimireddy (2026). f-INE: a hypothesis testing framework for estimating influence under training randomness. ICLR. arXiv:2510.10510
 - Gao, Unal, Rangamani, Zhu (2026). An illusion of unlearning? Assessing machine unlearning through internal representations. AISTATS, PMLR 300. arXiv:2604.08271
 - Zhang, Lin, Bai, Mei (2024). Negative preference optimization: from catastrophic collapse to effective unlearning. COLM. arXiv:2404.05868 (from prior knowledge; not re-verified)
-- Kamb, Ganguli (2024). An analytic theory of creativity in convolutional diffusion models. arXiv:2412.20292 (from prior knowledge; not re-verified)
+- Kamb, Ganguli (2025). An analytic theory of creativity in convolutional diffusion models. ICML 2025, PMLR 267. arXiv:2412.20292
 - Kingma, Salimans, Poole, Ho (2021). Variational diffusion models. NeurIPS. arXiv:2107.00630 (from prior knowledge; not re-verified)
 - Kingma, Gao (2023). Understanding diffusion objectives as the ELBO with simple data augmentation. NeurIPS. arXiv:2303.00848 (from prior knowledge; not re-verified)
 - Kynkäänniemi, Aittala, Karras, Laine, Aila, Lehtinen (2024). Applying guidance in a limited interval improves sample and distribution quality in diffusion models. NeurIPS. arXiv:2404.07724 (from prior knowledge; not re-verified)
