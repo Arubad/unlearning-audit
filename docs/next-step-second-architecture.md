@@ -137,14 +137,14 @@ Every model gets one interface: `null_class`, `get_label_param(k)`, `set_label_p
 
 ## Order and rough budget
 
-1. Now → 2026-11-26 01:00: C5 finishes on the laptop (unchanged).
-2. 2026-11-26:
+1. Done: C5 finished on 2026-11-26.
+2. Before any GPU training:
    - DiT spike on the laptop;
    - refactor to the label interface, plus the bit-for-bit U-Net check;
    - vendor DiT;
    - write and timestamp C6 (and C7) registrations;
    - move the Kaggle driver into the repo.
-3. 2026-11-28 onwards, Kaggle:
+3. With GPU compute:
    - **A:** 9 DiT trainings. At an assumed 5–12 GPU-h each (set by the spike) that is 45–110 GPU-h, ≈ 1–2 weeks of quota.
    - **B:** 7 U-Net trainings ≈ 23 GPU-h, ≈ 0.5 week, after A is fully queued.
 4. As checkpoints arrive: laptop audits, C5/C6 scoring, write-up.

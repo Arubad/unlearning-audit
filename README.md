@@ -2,7 +2,7 @@
 
 **An ill-posed reference in class-unlearning audits of conditional diffusion models.**
 
-Paper (4-page workshop version plus appendix): [`paper/workshop/main.pdf`](paper/workshop/main.pdf) · long draft: [`paper/DRAFT.md`](paper/DRAFT.md) · every registration and outcome: [`PREREGISTRATION.md`](PREREGISTRATION.md)
+Paper (4-page workshop version plus appendix): [`paper/workshop/main.pdf`](paper/workshop/main.pdf) · one-page summary: [`paper/summary/one_page.pdf`](paper/summary/one_page.pdf) · long draft: [`paper/DRAFT.md`](paper/DRAFT.md) · every registration and outcome: [`PREREGISTRATION.md`](PREREGISTRATION.md)
 
 ## The finding in one paragraph
 
@@ -42,13 +42,14 @@ Full list: paper appendix C.
 
 ## Next step
 
-Test the finding on a second architecture, a small **DiT** (plus an EDM-style label input), under rules registered before data. The design is in [`docs/next-step-second-architecture.md`](docs/next-step-second-architecture.md). It needs roughly **100–150 T4 GPU-hours** of retraining, beyond our current free quota.
+Test the finding on a second architecture, a small **DiT** (plus an EDM-style label input), under rules registered before data. The design is in [`docs/next-step-second-architecture.md`](docs/next-step-second-architecture.md). It needs roughly **70–140 T4 GPU-hours** of training (design estimate, to be pinned down by a short timing run), beyond our current free quota.
 
 ## Repository map
 
 | Path | What it is |
 |---|---|
 | [`paper/workshop/`](paper/workshop/) | LaTeX source and PDF (`cd paper/workshop && tectonic main.tex`) |
+| [`paper/summary/`](paper/summary/) | One-page summary (LaTeX and PDF) |
 | [`paper/DRAFT.md`](paper/DRAFT.md) | Long draft with full tables |
 | [`paper/RESEARCH_JOURNAL.md`](paper/RESEARCH_JOURNAL.md) | Research argument and process log, including the path from the original hypotheses to this finding (§7) |
 | [`PREREGISTRATION.md`](PREREGISTRATION.md) | Every registered study (C1–C5) with timestamps relative to data, amendments, and scored outcomes |
